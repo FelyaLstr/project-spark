@@ -162,9 +162,15 @@ export class GameEngine {
   }
 
   // ---------- main loop ----------
-  update(dt: number, playerCmd: InputCommand) {
-    dt = Math.min(dt, 0.05);
+  update(rawDt: number, playerCmd: InputCommand) {
+    let dt = Math.min(rawDt, 0.05);
     if (this.phase === "RESULTS") return;
+
+    // hit stop: scale simulation time for a few tens of milliseconds
+    if (this.hitStop > 0) {
+      this.hitStop = Math.max(0, this.hitStop - dt);
+      dt *= C.feedback.hitStopScale;
+    }
 
     if (playerCmd.aim.x || playerCmd.aim.y) this.aimDir = norm(playerCmd.aim);
 
@@ -182,12 +188,23 @@ export class GameEngine {
 
     if (this.phase === "PLAYER_DEAD") {
       this.freeze -= dt;
+      const reacting = this.freeze > C.match.freezeOnDeath - C.feedback.deathReactionSeconds;
+      if (reacting) {
+        // short slow-motion death reaction: projectiles keep flying, nobody acts
+        const slow = dt * 0.35;
+        this.updateProjectiles(slow);
+        this.updateTimers(slow);
+      }
       this.updateEffects(dt);
       if (this.freeze <= 0) this.phase = "RESULTS";
       return;
     }
 
     this.time += dt;
+    for (const k of Object.keys(this.dodgeTextCd)) {
+      this.dodgeTextCd[k] = Math.max(0, (this.dodgeTextCd[k] ?? 0) - dt);
+    }
+
     if (this.announceTimer > 0) {
       this.announceTimer -= dt;
       if (this.announceTimer <= 0) this.announcement = null;
