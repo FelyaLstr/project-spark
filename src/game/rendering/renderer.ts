@@ -200,6 +200,20 @@ function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string) {
     ctx.lineWidth = 3;
     ctx.stroke();
   }
+  if (f.invulnFor > 0 || f.dashFor > 0) {
+    // i-frame indicator: rotating dashed shield so dodges are unmistakable
+    ctx.save();
+    ctx.rotate(Date.now() / 220);
+    ctx.beginPath();
+    ctx.arc(0, 0, f.radius + 11, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(163,230,53,0.95)";
+    ctx.shadowColor = "rgba(163,230,53,0.9)";
+    ctx.shadowBlur = 16;
+    ctx.setLineDash([9, 7]);
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
   if (f.buffs.overchargeFor > 0) {
     ctx.beginPath();
     ctx.arc(0, 0, f.radius + 9, 0, Math.PI * 2);
@@ -207,6 +221,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string) {
     ctx.lineWidth = 2;
     ctx.stroke();
   }
+
   ctx.shadowColor = color;
   ctx.shadowBlur = 22;
   ctx.beginPath();
