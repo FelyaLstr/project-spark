@@ -51,13 +51,17 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
+    let fps = 60;
     const loop = (now: number) => {
       const dt = (now - last) / 1000;
       last = now;
+      // smoothed fps, kept out of React state so telemetry never triggers a render
+      if (dt > 0) fps += (1 / dt - fps) * 0.1;
       engine.update(dt, input.consume());
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
-      render(ctx, engine, canvas.clientWidth, canvas.clientHeight, dpr);
+      render(ctx, engine, canvas.clientWidth, canvas.clientHeight, dpr, fps);
+
 
       hudTimer -= dt;
       if (hudTimer <= 0) {
