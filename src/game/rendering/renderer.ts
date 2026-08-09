@@ -10,6 +10,7 @@ export function render(
   viewW: number,
   viewH: number,
   dpr: number,
+  fps = 0,
 ) {
   const zoom = Math.max(0.52, Math.min(0.95, viewW / 900));
   const halfW = viewW / 2 / zoom;
@@ -42,7 +43,38 @@ export function render(
   drawSafeZone(ctx, engine);
 
   ctx.restore();
+
+  if (C.debug) {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    drawDebugOverlay(ctx, engine, fps);
+    ctx.restore();
+  }
 }
+
+function drawDebugOverlay(ctx: CanvasRenderingContext2D, engine: GameEngine, fps: number) {
+  const p = engine.player;
+  const e = engine.enemy;
+  const v = (x: number, y: number) => `${x.toFixed(0)},${y.toFixed(0)}`;
+  const lines = [
+    `fps ${fps.toFixed(0)}  phase ${engine.phase}  t ${engine.elapsed.toFixed(1)}s`,
+    `hitStop ${(engine.hitStop * 1000).toFixed(0)}ms  fx ${engine.effects.length}  proj ${engine.projectiles.length}`,
+    `P pos ${v(p.pos.x, p.pos.y)}  vel ${v(p.vel.x, p.vel.y)} (${Math.hypot(p.vel.x, p.vel.y).toFixed(0)})`,
+    `P hp ${p.hp.toFixed(0)}  dash ${p.dashFor.toFixed(2)}  inv ${p.invulnFor.toFixed(2)}  ult ${p.ultCharge.toFixed(0)}`,
+    `P cd atk ${p.cooldowns.basic.toFixed(2)} q ${p.cooldowns.q.toFixed(2)} w ${p.cooldowns.w.toFixed(2)}`,
+    `E pos ${v(e.pos.x, e.pos.y)}  vel ${v(e.vel.x, e.vel.y)} (${Math.hypot(e.vel.x, e.vel.y).toFixed(0)})`,
+    `E hp ${e.hp.toFixed(0)}  hit ${e.stats.abilitiesHit}/${e.stats.abilitiesHit + e.stats.abilitiesMissed}  ai ${C.ai.difficulty}`,
+    `blocked P:${engine.debugInfo.playerBlocked ? 1 : 0} E:${engine.debugInfo.enemyBlocked ? 1 : 0}`,
+  ];
+  ctx.font = "12px ui-monospace, SFMono-Regular, monospace";
+  ctx.textAlign = "left";
+  const w = 320;
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(8, 8, w, lines.length * 15 + 10);
+  ctx.fillStyle = "#7dd3fc";
+  lines.forEach((l, i) => ctx.fillText(l, 16, 25 + i * 15));
+}
+
 
 function drawFloor(ctx: CanvasRenderingContext2D) {
   const g = ctx.createRadialGradient(C.arena.width / 2, C.arena.height / 2, 100, C.arena.width / 2, C.arena.height / 2, 1000);
