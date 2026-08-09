@@ -85,6 +85,8 @@ export type Projectile = {
   traveled: number;
   range: number;
   trail: Vec[];
+  /** how many trail samples to keep — Q keeps a longer, more readable streak */
+  trailMax: number;
   /** counted toward ability hit/miss accuracy stats */
   tracked: boolean;
   resolved: boolean;
@@ -96,6 +98,9 @@ export type Effect = {
     | "telegraph-line"
     | "shockwave"
     | "hit"
+    | "impact-ring"
+    | "dodge-ring"
+    | "fizzle"
     | "slash"
     | "text"
     | "core-ring"
@@ -109,6 +114,7 @@ export type Effect = {
   text?: string;
   color?: string;
 };
+
 
 export type MatchPhase =
   | "COUNTDOWN"
