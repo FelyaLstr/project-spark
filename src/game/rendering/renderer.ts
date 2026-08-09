@@ -251,8 +251,12 @@ function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
 
 function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const p of engine.projectiles) {
-    const core = p.team === "A" ? "#67e8f9" : "#fda4af";
-    const glow = p.team === "A" ? "#22d3ee" : "#f43f5e";
+    const isQ = p.kind === "q";
+    // ATK = thin cyan/rose dart, Q = fat violet/amber orb. Never the same read.
+    const core = isQ ? (p.team === "A" ? "#ddd6fe" : "#fed7aa") : p.team === "A" ? "#a5f3fc" : "#fecdd3";
+    const glow = isQ ? (p.team === "A" ? "#8b5cf6" : "#f97316") : p.team === "A" ? "#22d3ee" : "#f43f5e";
+    const ang = Math.atan2(p.dir.y, p.dir.x);
+
     // trail
     if (p.trail.length > 1) {
       ctx.save();
@@ -261,8 +265,9 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       for (let i = 1; i < p.trail.length; i++) {
         const a = p.trail[i - 1]!;
         const b = p.trail[i]!;
-        ctx.globalAlpha = (i / p.trail.length) * 0.5;
-        ctx.lineWidth = p.radius * (0.6 + (i / p.trail.length) * 1.2);
+        const k = i / p.trail.length;
+        ctx.globalAlpha = k * (isQ ? 0.65 : 0.4);
+        ctx.lineWidth = p.radius * (isQ ? 0.5 + k * 1.4 : 0.35 + k * 0.9);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -270,16 +275,36 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       }
       ctx.restore();
     }
+
     ctx.save();
+    ctx.translate(p.pos.x, p.pos.y);
+    ctx.rotate(ang);
     ctx.shadowColor = glow;
-    ctx.shadowBlur = p.kind === "q" ? 26 : 16;
-    ctx.beginPath();
-    ctx.ellipse(p.pos.x, p.pos.y, p.radius * (p.kind === "q" ? 2.0 : 1.7), p.radius, Math.atan2(p.dir.y, p.dir.x), 0, Math.PI * 2);
-    ctx.fillStyle = core;
-    ctx.fill();
+    ctx.shadowBlur = isQ ? 30 : 14;
+    if (isQ) {
+      // pulsing orb + leading spike so the direction is unmistakable
+      const pulse = 1 + 0.12 * Math.sin(Date.now() / 60);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.radius * 1.5 * pulse, p.radius * pulse, 0, 0, Math.PI * 2);
+      ctx.fillStyle = core;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(p.radius * 2.4, 0);
+      ctx.lineTo(p.radius * 0.6, -p.radius * 0.75);
+      ctx.lineTo(p.radius * 0.6, p.radius * 0.75);
+      ctx.closePath();
+      ctx.fillStyle = glow;
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.radius * 1.9, p.radius * 0.7, 0, 0, Math.PI * 2);
+      ctx.fillStyle = core;
+      ctx.fill();
+    }
     ctx.restore();
   }
 }
+
 
 function drawEffectsUnder(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const e of engine.effects) {
