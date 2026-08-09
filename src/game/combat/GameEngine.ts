@@ -513,19 +513,40 @@ export class GameEngine {
     return (t as Fighter).team !== undefined;
   }
 
-  /** Central damage entry point — nothing else should touch hp. */
+  /** Central damage entry point — nothing else should touch hp. Same path for player and AI. */
   applyDamage(source: Fighter | Mob | null, target: Fighter | Mob, amount: number) {
     if (!target.alive) return;
     const R = C.abilities.r;
+    const F = C.feedback;
     if (this.isFighter(target) && (target.invulnFor > 0 || target.dashFor > 0)) {
-      this.pushEffect({ kind: "text", pos: { ...target.pos }, text: "DODGE", life: 0.7, color: "#a3e635" });
+      // i-frame dodge: one popup per window, plus a soft ring pulse
+      if ((this.dodgeTextCd[target.id] ?? 0) <= 0) {
+        this.dodgeTextCd[target.id] = F.dodgeTextCooldown;
+        this.pushEffect({ kind: "text", pos: { ...target.pos }, text: "DODGE", life: 0.6, color: "#a3e635" });
+      }
+      this.pushEffect({
+        kind: "dodge-ring",
+        pos: { ...target.pos },
+        radius: target.radius + 16,
+        life: 0.3,
+        color: "#a3e635",
+      });
       target.ultCharge = Math.min(R.chargeMax, target.ultCharge + R.chargePerDodge);
       return;
     }
     const dmg = Math.max(0, amount);
     target.hp -= dmg;
-    target.hitFlash = C.feedback.hitFlashDuration;
-    this.pushEffect({ kind: "hit", pos: { ...target.pos }, radius: 20, life: 0.22, color: "#fef08a" });
+    target.hitFlash = F.hitFlashDuration;
+    const heavy = dmg >= C.abilities.q.damage * 0.8;
+    this.hitStop = Math.max(this.hitStop, heavy ? F.hitStopSecondsHeavy : F.hitStopSeconds);
+    this.pushEffect({ kind: "hit", pos: { ...target.pos }, radius: 18, life: 0.18, color: "#fff7c2" });
+    this.pushEffect({
+      kind: "impact-ring",
+      pos: { ...target.pos },
+      radius: target.radius + (heavy ? 26 : 14),
+      life: heavy ? 0.32 : 0.22,
+      color: heavy ? "#fbbf24" : "#fde68a",
+    });
     this.pushEffect({
       kind: "text",
       pos: { x: target.pos.x + (Math.random() - 0.5) * 16, y: target.pos.y },
@@ -533,6 +554,7 @@ export class GameEngine {
       life: C.feedback.damageTextLife,
       color: this.isFighter(target) && target.team === "A" ? "#fca5a5" : "#fde68a",
     });
+
 
     if (source && this.isFighter(source)) {
       source.stats.damageDealt += dmg;
