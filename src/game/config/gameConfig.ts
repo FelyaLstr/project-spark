@@ -178,7 +178,18 @@ export const GAME_CONFIG = {
   feedback: {
     hitFlashDuration: 0.16,
     damageTextLife: 0.85,
+    /** real-time length of the hit pause (kept tiny on purpose) */
+    hitStopSeconds: 0.045,
+    /** heavier hit (Q / ult-boosted) pause */
+    hitStopSecondsHeavy: 0.06,
+    /** time scale applied while a hit pause is active */
+    hitStopScale: 0.12,
+    /** minimum gap between DODGE popups so overlapping projectiles don't spam */
+    dodgeTextCooldown: 0.45,
+    /** short death reaction before the results screen is allowed */
+    deathReactionSeconds: 0.55,
   },
+
 } as const;
 
 export type GameConfig = typeof GAME_CONFIG;
