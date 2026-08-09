@@ -318,18 +318,24 @@ function drawEffectsUnder(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       ctx.globalAlpha = 1;
     }
     if (e.kind === "telegraph-line" && e.dir) {
+      // charge-up lane: fills toward the caster's aim during the windup
+      const charge = 1 - t;
+      const len = e.radius ?? 400;
       ctx.save();
       ctx.translate(e.pos.x, e.pos.y);
       ctx.rotate(Math.atan2(e.dir.y, e.dir.x));
-      ctx.fillStyle = `${e.color ?? "#22d3ee"}33`;
-      ctx.fillRect(0, -16, e.radius ?? 400, 32);
-      ctx.strokeStyle = e.color ?? "#22d3ee";
-      ctx.globalAlpha = 0.5 + 0.5 * (1 - t);
+      ctx.fillStyle = `${e.color ?? "#a78bfa"}22`;
+      ctx.fillRect(0, -18, len, 36);
+      ctx.fillStyle = `${e.color ?? "#a78bfa"}55`;
+      ctx.fillRect(0, -18, len * charge, 36);
+      ctx.strokeStyle = e.color ?? "#a78bfa";
+      ctx.globalAlpha = 0.45 + 0.55 * charge;
       ctx.lineWidth = 2;
-      ctx.strokeRect(0, -16, e.radius ?? 400, 32);
+      ctx.strokeRect(0, -18, len, 36);
       ctx.globalAlpha = 1;
       ctx.restore();
     }
+
     if (e.kind === "shockwave") {
       ctx.beginPath();
       ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 100) * (1 - t * 0.35), 0, Math.PI * 2);
