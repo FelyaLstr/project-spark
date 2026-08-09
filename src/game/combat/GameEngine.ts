@@ -595,9 +595,13 @@ export class GameEngine {
     this.winner = f.team === "A" ? "B" : "A";
     this.phase = "PLAYER_DEAD";
     this.freeze = C.match.freezeOnDeath;
+    this.hitStop = Math.max(this.hitStop, 0.09);
+    f.vel = { x: 0, y: 0 };
     this.pushEffect({ kind: "hit", pos: { ...f.pos }, radius: 110, life: 1.2, color: "#ef4444" });
     this.pushEffect({ kind: "shockwave", pos: { ...f.pos }, radius: 90, life: 0.6, color: "#ef4444" });
+    this.pushEffect({ kind: "impact-ring", pos: { ...f.pos }, radius: 150, life: 0.9, color: "#f87171" });
   }
+
 
   // ---------- mobs ----------
   private updateMobs(dt: number) {
