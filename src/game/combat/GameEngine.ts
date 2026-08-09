@@ -329,11 +329,15 @@ export class GameEngine {
     if (ml > 1) move = { x: move.x / ml, y: move.y / ml };
 
     if (f.dashFor > 0) {
-      // dash keeps its own velocity, leaves a trail
-      this.pushEffect({ kind: "dash-trail", pos: { ...f.pos }, radius: f.radius, life: 0.24, color: f.team === "A" ? "#38bdf8" : "#fb7185" });
+      // dash keeps its own velocity, leaves a dense readable trail
+      this.pushEffect({ kind: "dash-trail", pos: { ...f.pos }, radius: f.radius, life: 0.26, color: f.team === "A" ? "#38bdf8" : "#fb7185" });
     } else {
-      const target = scale(move, this.speedOf(f) * Math.min(1, ml || 0));
-      const rate = ml > 0.02 ? C.vanguard.acceleration : C.vanguard.deceleration;
+      const maxSpeed = this.speedOf(f);
+      const target = scale(move, maxSpeed * Math.min(1, ml || 0));
+      let rate = ml > 0.02 ? C.vanguard.acceleration : C.vanguard.deceleration;
+      // bleed off dash overspeed over the recovery window instead of snapping
+      const speed = Math.hypot(f.vel.x, f.vel.y);
+      if (speed > maxSpeed * 1.05) rate = Math.max(rate, (speed - maxSpeed) / Math.max(0.01, C.abilities.w.recovery));
       const diff = sub(target, f.vel);
       const dl = Math.hypot(diff.x, diff.y);
       const maxStep = rate * dt;
@@ -346,12 +350,16 @@ export class GameEngine {
 
     const wanted = add(f.pos, step);
     const resolved = this.collide(wanted, f.radius);
+    const blocked = Math.abs(resolved.x - wanted.x) > 0.01 || Math.abs(resolved.y - wanted.y) > 0.01;
+    if (f.team === "A") this.debugInfo.playerBlocked = blocked;
+    else this.debugInfo.enemyBlocked = blocked;
     // if a wall stopped us, kill the velocity component into it
-    if (f.dashFor <= 0 && (Math.abs(resolved.x - wanted.x) > 0.01 || Math.abs(resolved.y - wanted.y) > 0.01)) {
+    if (f.dashFor <= 0 && blocked) {
       if (Math.abs(resolved.x - wanted.x) > 0.01) f.vel.x = 0;
       if (Math.abs(resolved.y - wanted.y) > 0.01) f.vel.y = 0;
     }
     f.pos = resolved;
+
 
     if (cmd.cast) this.tryCast(f, cmd.cast, aim);
   }
