@@ -334,10 +334,11 @@ export class GameEngine {
     } else {
       const maxSpeed = this.speedOf(f);
       const target = scale(move, maxSpeed * Math.min(1, ml || 0));
-      let rate = ml > 0.02 ? C.vanguard.acceleration : C.vanguard.deceleration;
+      let rate: number = ml > 0.02 ? C.vanguard.acceleration : C.vanguard.deceleration;
       // bleed off dash overspeed over the recovery window instead of snapping
       const speed = Math.hypot(f.vel.x, f.vel.y);
       if (speed > maxSpeed * 1.05) rate = Math.max(rate, (speed - maxSpeed) / Math.max(0.01, C.abilities.w.recovery));
+
       const diff = sub(target, f.vel);
       const dl = Math.hypot(diff.x, diff.y);
       const maxStep = rate * dt;
