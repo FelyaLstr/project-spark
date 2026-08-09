@@ -661,7 +661,7 @@ export class GameEngine {
       if (p.resolved) continue;
       const step = scale(p.dir, p.speed * dt);
       p.trail.push({ ...p.pos });
-      if (p.trail.length > 8) p.trail.shift();
+      if (p.trail.length > p.trailMax) p.trail.shift();
       p.pos = add(p.pos, step);
       p.traveled += Math.hypot(step.x, step.y);
 
@@ -689,17 +689,26 @@ export class GameEngine {
             p.pos.y < wall.y + wall.h + p.radius
           ) {
             dead = true;
-            this.pushEffect({ kind: "hit", pos: { ...p.pos }, radius: 14, life: 0.2, color: "#94a3b8" });
+            this.pushEffect({ kind: "fizzle", pos: { ...p.pos }, radius: p.radius * 2, life: 0.22, color: "#94a3b8" });
             break;
           }
         }
       }
       if (!dead && (p.traveled > p.range || p.pos.x < 0 || p.pos.y < 0 || p.pos.x > C.arena.width || p.pos.y > C.arena.height)) {
         dead = true;
+        // subtle miss puff — never a damage number
+        this.pushEffect({
+          kind: "fizzle",
+          pos: { ...p.pos },
+          radius: p.radius * 1.6,
+          life: 0.2,
+          color: p.team === "A" ? "#38bdf8" : "#fb7185",
+        });
       }
 
       if (dead) {
         p.resolved = true;
+
         if (p.tracked) {
           if (hit) owner.stats.abilitiesHit += 1;
           else owner.stats.abilitiesMissed += 1;
