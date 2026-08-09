@@ -22,6 +22,25 @@ const rot = (v: Vec, a: number): Vec => ({
 });
 
 /**
+ * Cheap projectile leading: two fixed-point iterations of
+ * "how long until the shot arrives -> where will they be then".
+ * Never solves the exact quadratic; that is intentional.
+ */
+function leadAim(self: Fighter, foe: Fighter, projectileSpeed: number, leadFactor: number): Vec {
+  let t = dist(self.pos, foe.pos) / projectileSpeed;
+  for (let i = 0; i < 2; i++) {
+    const px = foe.pos.x + foe.vel.x * t * leadFactor;
+    const py = foe.pos.y + foe.vel.y * t * leadFactor;
+    t = Math.min(GAME_CONFIG.ai.maxLeadSeconds, Math.hypot(px - self.pos.x, py - self.pos.y) / projectileSpeed);
+  }
+  const predicted: Vec = {
+    x: foe.pos.x + foe.vel.x * t * leadFactor,
+    y: foe.pos.y + foe.vel.y * t * leadFactor,
+  };
+  return norm(sub(predicted, self.pos));
+}
+
+/**
  * Local opponent AI. Emits the same InputCommand shape as a human, so it can be
  * swapped for a network peer later. Intentionally imperfect.
  */
@@ -45,15 +64,13 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
       const toFoe = norm(sub(foe.pos, self.pos));
       const range = dist(self.pos, foe.pos);
 
-      // ---- aiming (with error, so it can miss) ----
-      const aim = rot(toFoe, (Math.random() - 0.5) * cfg.aimError * 2);
-
       // ---- kiting: keep preferred range, strafe sideways ----
       const perp: Vec = { x: -toFoe.y * strafeDir, y: toFoe.x * strafeDir };
       let move: Vec;
       const delta = range - cfg.preferredRange;
       if (Math.abs(delta) < 60) move = perp;
       else move = norm({ x: toFoe.x * Math.sign(delta) + perp.x * cfg.strafe, y: toFoe.y * Math.sign(delta) + perp.y * cfg.strafe });
+
 
       // avoid hugging walls: nudge away from any wall we are close to
       for (const wall of w.walls) {
