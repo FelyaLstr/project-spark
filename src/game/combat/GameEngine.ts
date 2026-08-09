@@ -351,7 +351,12 @@ export class GameEngine {
     return out;
   }
 
-  private spawnProjectile(f: Fighter, kind: ProjectileKind, dir: Vec, opts: { speed: number; radius: number; damage: number; range: number }) {
+  private spawnProjectile(
+    f: Fighter,
+    kind: ProjectileKind,
+    dir: Vec,
+    opts: { speed: number; radius: number; damage: number; range: number; trailMax: number },
+  ) {
     const origin = add(f.pos, scale(dir, f.radius + 6));
     this.projectiles.push({
       id: nid("p"),
@@ -366,6 +371,7 @@ export class GameEngine {
       traveled: 0,
       range: opts.range,
       trail: [],
+      trailMax: opts.trailMax,
       tracked: true,
       resolved: false,
     });
@@ -373,9 +379,9 @@ export class GameEngine {
       kind: "muzzle",
       pos: origin,
       dir,
-      radius: kind === "q" ? 26 : 16,
-      life: 0.14,
-      color: f.team === "A" ? "#67e8f9" : "#fda4af",
+      radius: kind === "q" ? 30 : 15,
+      life: kind === "q" ? 0.2 : 0.12,
+      color: f.team === "A" ? (kind === "q" ? "#c4b5fd" : "#67e8f9") : kind === "q" ? "#fdba74" : "#fda4af",
     });
   }
 
@@ -393,6 +399,7 @@ export class GameEngine {
         radius: v.attackProjectileRadius,
         damage: v.attackDamage * this.damageMult(f),
         range: v.attackRange,
+        trailMax: v.attackTrailLength,
       });
       return;
     }
@@ -405,13 +412,19 @@ export class GameEngine {
         pos: { ...f.pos },
         dir,
         radius: q.range,
-        life: q.telegraph,
-        color: f.team === "A" ? "#22d3ee" : "#f43f5e",
+        life: q.qTelegraphDuration,
+        color: f.team === "A" ? "#a78bfa" : "#fb923c",
       });
       const damage = q.damage * this.damageMult(f);
-      this.later(q.telegraph, () => {
+      this.later(q.qTelegraphDuration, () => {
         if (!f.alive) return;
-        this.spawnProjectile(f, "q", dir, { speed: q.speed, radius: q.radius, damage, range: q.range });
+        this.spawnProjectile(f, "q", dir, {
+          speed: q.speed,
+          radius: q.radius,
+          damage,
+          range: q.range,
+          trailMax: q.trailLength,
+        });
       });
       return;
     }
@@ -421,10 +434,13 @@ export class GameEngine {
       f.cooldowns.w = w.cooldown * cdm;
       f.dashFor = w.duration;
       f.invulnFor = w.invulnerable;
+      // instant, fully predictable dash vector (no acceleration ramp)
       f.vel = scale(dir, w.distance / w.duration);
-      this.pushEffect({ kind: "hit", pos: { ...f.pos }, radius: 40, life: 0.25, color: "#a5f3fc" });
+      f.knockback = { x: 0, y: 0 };
+      this.pushEffect({ kind: "dodge-ring", pos: { ...f.pos }, radius: 44, life: 0.28, color: "#a5f3fc" });
       return;
     }
+
 
     if (key === "e") {
       const e = C.abilities.e;
