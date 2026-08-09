@@ -106,7 +106,12 @@ export const GAME_CONFIG = {
     levels: {
       easy: {
         reaction: 0.42,
-        aimError: 0.34,
+        /** radians of random aim spread */
+        aimError: 0.3,
+        /** 0 = shoots at where you are, 1 = full velocity leading */
+        leadFactor: 0.35,
+        /** extra random error (radians) applied on top when leading */
+        leadError: 0.14,
         preferredRange: 300,
         dodgeChance: 0.25,
         qChance: 0.35,
@@ -115,16 +120,20 @@ export const GAME_CONFIG = {
       },
       normal: {
         reaction: 0.24,
-        aimError: 0.16,
+        aimError: 0.12,
+        leadFactor: 0.75,
+        leadError: 0.07,
         preferredRange: 280,
         dodgeChance: 0.55,
-        qChance: 0.6,
+        qChance: 0.55,
         strafe: 0.55,
         useUlt: 0.85,
       },
       hard: {
         reaction: 0.12,
-        aimError: 0.06,
+        aimError: 0.05,
+        leadFactor: 1,
+        leadError: 0.025,
         preferredRange: 260,
         dodgeChance: 0.85,
         qChance: 0.85,
@@ -134,7 +143,10 @@ export const GAME_CONFIG = {
     },
     /** distance at which an incoming projectile triggers a dodge attempt */
     dodgeThreatDistance: 190,
+    /** cap on predicted travel time so the AI never aims at absurd extrapolations */
+    maxLeadSeconds: 0.9,
   },
+
   mobs: {
     crawler: { hp: 70, damage: 10, speed: 120, radius: 16, attackCooldown: 1.4, aggroRange: 220, leash: 300, essence: 5 },
     guardian: { hp: 420, damage: 32, speed: 95, radius: 30, attackCooldown: 2.6, aggroRange: 280, leash: 380, essence: 30, telegraph: 0.8, abilityPowerBonus: 0.1 },
