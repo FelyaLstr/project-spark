@@ -57,7 +57,7 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, engine: GameEngine, fps
   const e = engine.enemy;
   const v = (x: number, y: number) => `${x.toFixed(0)},${y.toFixed(0)}`;
   const lines = [
-    `fps ${fps.toFixed(0)}  phase ${engine.phase}  t ${engine.elapsed.toFixed(1)}s`,
+    `fps ${fps.toFixed(0)}  phase ${engine.phase}  t ${engine.time.toFixed(1)}s`,
     `hitStop ${(engine.hitStop * 1000).toFixed(0)}ms  fx ${engine.effects.length}  proj ${engine.projectiles.length}`,
     `P pos ${v(p.pos.x, p.pos.y)}  vel ${v(p.vel.x, p.vel.y)} (${Math.hypot(p.vel.x, p.vel.y).toFixed(0)})`,
     `P hp ${p.hp.toFixed(0)}  dash ${p.dashFor.toFixed(2)}  inv ${p.invulnFor.toFixed(2)}  ult ${p.ultCharge.toFixed(0)}`,
