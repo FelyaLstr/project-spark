@@ -111,6 +111,21 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
       let cast = decision;
       decision = null;
 
+      // ---- aiming: lead the target for projectiles, then add human-ish error ----
+      let aim: Vec;
+      if (cast === "q" || cast === "basic") {
+        const projSpeed = cast === "q" ? C.abilities.q.speed : C.vanguard.attackProjectileSpeed;
+        // Q also has to cover its own windup, so treat it as a slower shot
+        const effSpeed =
+          cast === "q"
+            ? projSpeed / (1 + (C.abilities.q.qTelegraphDuration * projSpeed) / Math.max(1, range))
+            : projSpeed;
+        aim = leadAim(self, foe, effSpeed, cfg.leadFactor);
+        aim = rot(aim, (Math.random() - 0.5) * (cfg.aimError + cfg.leadError) * 2);
+      } else {
+        aim = rot(toFoe, (Math.random() - 0.5) * cfg.aimError * 2);
+      }
+
       // dodge sideways when we burn the dash
       if (cast === "w") {
         const dodgeDir: Vec = { x: -toFoe.y * strafeDir, y: toFoe.x * strafeDir };
@@ -119,6 +134,7 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
       if (cast && self.cooldowns[cast] > 0) cast = null;
 
       return { move, aim, cast };
+
     },
   };
 }
