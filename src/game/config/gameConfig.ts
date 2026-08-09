@@ -2,6 +2,8 @@
 // Do NOT hardcode timings/stats elsewhere.
 
 export const GAME_CONFIG = {
+  /** Debug telemetry overlay (FPS, positions, velocity, cooldowns, collision). Never ship as true. */
+  debug: false,
   /** Sprint toggles — keeps future systems in the codebase but out of the way. */
   features: {
     neutralMobs: false, // Sprint 3
@@ -10,6 +12,7 @@ export const GAME_CONFIG = {
     essenceUpgrades: false, // Sprint 3
     shockwaveAbility: false, // E is parked for now
   },
+
   arena: {
     width: 1600,
     height: 1200,
