@@ -382,8 +382,41 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
+    if (e.kind === "impact-ring") {
+      const grow = 1 - t;
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 24) * (0.35 + grow * 1.1), 0, Math.PI * 2);
+      ctx.strokeStyle = e.color ?? "#fbbf24";
+      ctx.globalAlpha = t * 0.9;
+      ctx.lineWidth = 2 + t * 5;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (e.kind === "dodge-ring") {
+      const grow = 1 - t;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 30) * (0.5 + grow * 0.9), 0, Math.PI * 2);
+      ctx.strokeStyle = e.color ?? "#a3e635";
+      ctx.shadowColor = e.color ?? "#a3e635";
+      ctx.shadowBlur = 18;
+      ctx.globalAlpha = t;
+      ctx.setLineDash([10, 8]);
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (e.kind === "fizzle") {
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 10) * (0.6 + (1 - t) * 0.8), 0, Math.PI * 2);
+      ctx.fillStyle = e.color ?? "#94a3b8";
+      ctx.globalAlpha = t * 0.45;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     if (e.kind === "text" && e.text) {
-      ctx.font = "bold 24px ui-sans-serif, system-ui";
+      const dodge = e.text === "DODGE";
+      ctx.font = dodge ? "bold 20px ui-sans-serif, system-ui" : "bold 24px ui-sans-serif, system-ui";
       ctx.textAlign = "center";
       ctx.globalAlpha = Math.min(1, t * 1.6);
       ctx.lineWidth = 4;
@@ -394,6 +427,7 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       ctx.fillText(e.text, e.pos.x, y);
       ctx.globalAlpha = 1;
     }
+
   }
 }
 
