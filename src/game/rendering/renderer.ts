@@ -10,6 +10,7 @@ export function render(
   viewW: number,
   viewH: number,
   dpr: number,
+  fps = 0,
 ) {
   const zoom = Math.max(0.52, Math.min(0.95, viewW / 900));
   const halfW = viewW / 2 / zoom;
@@ -42,7 +43,38 @@ export function render(
   drawSafeZone(ctx, engine);
 
   ctx.restore();
+
+  if (C.debug) {
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    drawDebugOverlay(ctx, engine, fps);
+    ctx.restore();
+  }
 }
+
+function drawDebugOverlay(ctx: CanvasRenderingContext2D, engine: GameEngine, fps: number) {
+  const p = engine.player;
+  const e = engine.enemy;
+  const v = (x: number, y: number) => `${x.toFixed(0)},${y.toFixed(0)}`;
+  const lines = [
+    `fps ${fps.toFixed(0)}  phase ${engine.phase}  t ${engine.time.toFixed(1)}s`,
+    `hitStop ${(engine.hitStop * 1000).toFixed(0)}ms  fx ${engine.effects.length}  proj ${engine.projectiles.length}`,
+    `P pos ${v(p.pos.x, p.pos.y)}  vel ${v(p.vel.x, p.vel.y)} (${Math.hypot(p.vel.x, p.vel.y).toFixed(0)})`,
+    `P hp ${p.hp.toFixed(0)}  dash ${p.dashFor.toFixed(2)}  inv ${p.invulnFor.toFixed(2)}  ult ${p.ultCharge.toFixed(0)}`,
+    `P cd atk ${p.cooldowns.basic.toFixed(2)} q ${p.cooldowns.q.toFixed(2)} w ${p.cooldowns.w.toFixed(2)}`,
+    `E pos ${v(e.pos.x, e.pos.y)}  vel ${v(e.vel.x, e.vel.y)} (${Math.hypot(e.vel.x, e.vel.y).toFixed(0)})`,
+    `E hp ${e.hp.toFixed(0)}  hit ${e.stats.abilitiesHit}/${e.stats.abilitiesHit + e.stats.abilitiesMissed}  ai ${C.ai.difficulty}`,
+    `blocked P:${engine.debugInfo.playerBlocked ? 1 : 0} E:${engine.debugInfo.enemyBlocked ? 1 : 0}`,
+  ];
+  ctx.font = "12px ui-monospace, SFMono-Regular, monospace";
+  ctx.textAlign = "left";
+  const w = 320;
+  ctx.fillStyle = "rgba(0,0,0,0.6)";
+  ctx.fillRect(8, 8, w, lines.length * 15 + 10);
+  ctx.fillStyle = "#7dd3fc";
+  lines.forEach((l, i) => ctx.fillText(l, 16, 25 + i * 15));
+}
+
 
 function drawFloor(ctx: CanvasRenderingContext2D) {
   const g = ctx.createRadialGradient(C.arena.width / 2, C.arena.height / 2, 100, C.arena.width / 2, C.arena.height / 2, 1000);
@@ -200,6 +232,20 @@ function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string) {
     ctx.lineWidth = 3;
     ctx.stroke();
   }
+  if (f.invulnFor > 0 || f.dashFor > 0) {
+    // i-frame indicator: rotating dashed shield so dodges are unmistakable
+    ctx.save();
+    ctx.rotate(Date.now() / 220);
+    ctx.beginPath();
+    ctx.arc(0, 0, f.radius + 11, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(163,230,53,0.95)";
+    ctx.shadowColor = "rgba(163,230,53,0.9)";
+    ctx.shadowBlur = 16;
+    ctx.setLineDash([9, 7]);
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.restore();
+  }
   if (f.buffs.overchargeFor > 0) {
     ctx.beginPath();
     ctx.arc(0, 0, f.radius + 9, 0, Math.PI * 2);
@@ -207,6 +253,7 @@ function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string) {
     ctx.lineWidth = 2;
     ctx.stroke();
   }
+
   ctx.shadowColor = color;
   ctx.shadowBlur = 22;
   ctx.beginPath();
@@ -251,8 +298,12 @@ function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
 
 function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const p of engine.projectiles) {
-    const core = p.team === "A" ? "#67e8f9" : "#fda4af";
-    const glow = p.team === "A" ? "#22d3ee" : "#f43f5e";
+    const isQ = p.kind === "q";
+    // ATK = thin cyan/rose dart, Q = fat violet/amber orb. Never the same read.
+    const core = isQ ? (p.team === "A" ? "#ddd6fe" : "#fed7aa") : p.team === "A" ? "#a5f3fc" : "#fecdd3";
+    const glow = isQ ? (p.team === "A" ? "#8b5cf6" : "#f97316") : p.team === "A" ? "#22d3ee" : "#f43f5e";
+    const ang = Math.atan2(p.dir.y, p.dir.x);
+
     // trail
     if (p.trail.length > 1) {
       ctx.save();
@@ -261,8 +312,9 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       for (let i = 1; i < p.trail.length; i++) {
         const a = p.trail[i - 1]!;
         const b = p.trail[i]!;
-        ctx.globalAlpha = (i / p.trail.length) * 0.5;
-        ctx.lineWidth = p.radius * (0.6 + (i / p.trail.length) * 1.2);
+        const k = i / p.trail.length;
+        ctx.globalAlpha = k * (isQ ? 0.65 : 0.4);
+        ctx.lineWidth = p.radius * (isQ ? 0.5 + k * 1.4 : 0.35 + k * 0.9);
         ctx.beginPath();
         ctx.moveTo(a.x, a.y);
         ctx.lineTo(b.x, b.y);
@@ -270,16 +322,36 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       }
       ctx.restore();
     }
+
     ctx.save();
+    ctx.translate(p.pos.x, p.pos.y);
+    ctx.rotate(ang);
     ctx.shadowColor = glow;
-    ctx.shadowBlur = p.kind === "q" ? 26 : 16;
-    ctx.beginPath();
-    ctx.ellipse(p.pos.x, p.pos.y, p.radius * (p.kind === "q" ? 2.0 : 1.7), p.radius, Math.atan2(p.dir.y, p.dir.x), 0, Math.PI * 2);
-    ctx.fillStyle = core;
-    ctx.fill();
+    ctx.shadowBlur = isQ ? 30 : 14;
+    if (isQ) {
+      // pulsing orb + leading spike so the direction is unmistakable
+      const pulse = 1 + 0.12 * Math.sin(Date.now() / 60);
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.radius * 1.5 * pulse, p.radius * pulse, 0, 0, Math.PI * 2);
+      ctx.fillStyle = core;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(p.radius * 2.4, 0);
+      ctx.lineTo(p.radius * 0.6, -p.radius * 0.75);
+      ctx.lineTo(p.radius * 0.6, p.radius * 0.75);
+      ctx.closePath();
+      ctx.fillStyle = glow;
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, p.radius * 1.9, p.radius * 0.7, 0, 0, Math.PI * 2);
+      ctx.fillStyle = core;
+      ctx.fill();
+    }
     ctx.restore();
   }
 }
+
 
 function drawEffectsUnder(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const e of engine.effects) {
@@ -293,18 +365,24 @@ function drawEffectsUnder(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       ctx.globalAlpha = 1;
     }
     if (e.kind === "telegraph-line" && e.dir) {
+      // charge-up lane: fills toward the caster's aim during the windup
+      const charge = 1 - t;
+      const len = e.radius ?? 400;
       ctx.save();
       ctx.translate(e.pos.x, e.pos.y);
       ctx.rotate(Math.atan2(e.dir.y, e.dir.x));
-      ctx.fillStyle = `${e.color ?? "#22d3ee"}33`;
-      ctx.fillRect(0, -16, e.radius ?? 400, 32);
-      ctx.strokeStyle = e.color ?? "#22d3ee";
-      ctx.globalAlpha = 0.5 + 0.5 * (1 - t);
+      ctx.fillStyle = `${e.color ?? "#a78bfa"}22`;
+      ctx.fillRect(0, -18, len, 36);
+      ctx.fillStyle = `${e.color ?? "#a78bfa"}55`;
+      ctx.fillRect(0, -18, len * charge, 36);
+      ctx.strokeStyle = e.color ?? "#a78bfa";
+      ctx.globalAlpha = 0.45 + 0.55 * charge;
       ctx.lineWidth = 2;
-      ctx.strokeRect(0, -16, e.radius ?? 400, 32);
+      ctx.strokeRect(0, -18, len, 36);
       ctx.globalAlpha = 1;
       ctx.restore();
     }
+
     if (e.kind === "shockwave") {
       ctx.beginPath();
       ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 100) * (1 - t * 0.35), 0, Math.PI * 2);
@@ -351,8 +429,41 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
+    if (e.kind === "impact-ring") {
+      const grow = 1 - t;
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 24) * (0.35 + grow * 1.1), 0, Math.PI * 2);
+      ctx.strokeStyle = e.color ?? "#fbbf24";
+      ctx.globalAlpha = t * 0.9;
+      ctx.lineWidth = 2 + t * 5;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    if (e.kind === "dodge-ring") {
+      const grow = 1 - t;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 30) * (0.5 + grow * 0.9), 0, Math.PI * 2);
+      ctx.strokeStyle = e.color ?? "#a3e635";
+      ctx.shadowColor = e.color ?? "#a3e635";
+      ctx.shadowBlur = 18;
+      ctx.globalAlpha = t;
+      ctx.setLineDash([10, 8]);
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (e.kind === "fizzle") {
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 10) * (0.6 + (1 - t) * 0.8), 0, Math.PI * 2);
+      ctx.fillStyle = e.color ?? "#94a3b8";
+      ctx.globalAlpha = t * 0.45;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
     if (e.kind === "text" && e.text) {
-      ctx.font = "bold 24px ui-sans-serif, system-ui";
+      const dodge = e.text === "DODGE";
+      ctx.font = dodge ? "bold 20px ui-sans-serif, system-ui" : "bold 24px ui-sans-serif, system-ui";
       ctx.textAlign = "center";
       ctx.globalAlpha = Math.min(1, t * 1.6);
       ctx.lineWidth = 4;
@@ -363,6 +474,7 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       ctx.fillText(e.text, e.pos.x, y);
       ctx.globalAlpha = 1;
     }
+
   }
 }
 

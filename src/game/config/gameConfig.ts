@@ -2,6 +2,8 @@
 // Do NOT hardcode timings/stats elsewhere.
 
 export const GAME_CONFIG = {
+  /** Debug telemetry overlay (FPS, positions, velocity, cooldowns, collision). Never ship as true. */
+  debug: false,
   /** Sprint toggles — keeps future systems in the codebase but out of the way. */
   features: {
     neutralMobs: false, // Sprint 3
@@ -10,6 +12,7 @@ export const GAME_CONFIG = {
     essenceUpgrades: false, // Sprint 3
     shockwaveAbility: false, // E is parked for now
   },
+
   arena: {
     width: 1600,
     height: 1200,
@@ -53,22 +56,27 @@ export const GAME_CONFIG = {
     /** units/s^2 — higher = snappier stop */
     deceleration: 3200,
     attackDamage: 16,
-    attackCooldown: 0.6,
+    attackCooldown: 0.62,
     attackRange: 430,
+    /** fast + flat: ATK is the reliable poke, ~0.48s to max range */
     attackProjectileSpeed: 900,
-    attackProjectileRadius: 10,
+    attackProjectileRadius: 9,
+    attackTrailLength: 7,
     /** legacy melee arc values, unused by the projectile attack */
     attackArc: Math.PI / 3,
   },
   abilities: {
     q: {
       name: "Strike",
-      cooldown: 3,
-      damage: 48,
-      speed: 980,
+      cooldown: 4,
+      damage: 46,
+      /** slower + fatter than ATK so it reads as a dodgeable skillshot (~0.86s to max range) */
+      speed: 760,
       range: 640,
-      radius: 14,
-      telegraph: 0.18,
+      radius: 17,
+      /** windup before the bolt leaves — must be reactable but never turn-based */
+      qTelegraphDuration: 0.3,
+      trailLength: 14,
     },
     w: {
       name: "Dash",
@@ -76,8 +84,11 @@ export const GAME_CONFIG = {
       distance: 230,
       duration: 0.16,
       invulnerable: 0.3,
+      /** movement is locked to the dash vector for this long (feels predictable) */
+      recovery: 0.06,
     },
     e: { name: "Shockwave", cooldown: 8, radius: 150, damage: 35, knockback: 260, telegraph: 0.25 },
+
     r: {
       name: "Overdrive",
       chargeMax: 100,
@@ -95,7 +106,12 @@ export const GAME_CONFIG = {
     levels: {
       easy: {
         reaction: 0.42,
-        aimError: 0.34,
+        /** radians of random aim spread */
+        aimError: 0.3,
+        /** 0 = shoots at where you are, 1 = full velocity leading */
+        leadFactor: 0.35,
+        /** extra random error (radians) applied on top when leading */
+        leadError: 0.14,
         preferredRange: 300,
         dodgeChance: 0.25,
         qChance: 0.35,
@@ -104,16 +120,20 @@ export const GAME_CONFIG = {
       },
       normal: {
         reaction: 0.24,
-        aimError: 0.16,
+        aimError: 0.12,
+        leadFactor: 0.75,
+        leadError: 0.07,
         preferredRange: 280,
         dodgeChance: 0.55,
-        qChance: 0.6,
+        qChance: 0.55,
         strafe: 0.55,
         useUlt: 0.85,
       },
       hard: {
         reaction: 0.12,
-        aimError: 0.06,
+        aimError: 0.05,
+        leadFactor: 1,
+        leadError: 0.025,
         preferredRange: 260,
         dodgeChance: 0.85,
         qChance: 0.85,
@@ -123,7 +143,10 @@ export const GAME_CONFIG = {
     },
     /** distance at which an incoming projectile triggers a dodge attempt */
     dodgeThreatDistance: 190,
+    /** cap on predicted travel time so the AI never aims at absurd extrapolations */
+    maxLeadSeconds: 0.9,
   },
+
   mobs: {
     crawler: { hp: 70, damage: 10, speed: 120, radius: 16, attackCooldown: 1.4, aggroRange: 220, leash: 300, essence: 5 },
     guardian: { hp: 420, damage: 32, speed: 95, radius: 30, attackCooldown: 2.6, aggroRange: 280, leash: 380, essence: 30, telegraph: 0.8, abilityPowerBonus: 0.1 },
@@ -155,7 +178,18 @@ export const GAME_CONFIG = {
   feedback: {
     hitFlashDuration: 0.16,
     damageTextLife: 0.85,
+    /** real-time length of the hit pause (kept tiny on purpose) */
+    hitStopSeconds: 0.045,
+    /** heavier hit (Q / ult-boosted) pause */
+    hitStopSecondsHeavy: 0.06,
+    /** time scale applied while a hit pause is active */
+    hitStopScale: 0.12,
+    /** minimum gap between DODGE popups so overlapping projectiles don't spam */
+    dodgeTextCooldown: 0.45,
+    /** short death reaction before the results screen is allowed */
+    deathReactionSeconds: 0.55,
   },
+
 } as const;
 
 export type GameConfig = typeof GAME_CONFIG;

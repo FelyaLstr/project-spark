@@ -93,6 +93,12 @@ export class GameEngine {
   private guardianSpawned = false;
   private coreWave = 0;
   private freeze = 0;
+  /** real-time remaining of the current hit pause */
+  hitStop = 0;
+  private dodgeTextCd: Record<string, number> = {};
+  /** last frame's collision state, for the debug overlay */
+  debugInfo = { playerBlocked: false, enemyBlocked: false, fighterContact: false };
+
 
   readonly corePos: Vec = { x: C.arena.width / 2, y: C.arena.height / 2 };
 
@@ -116,8 +122,11 @@ export class GameEngine {
     this.guardianSpawned = false;
     this.coreWave = 0;
     this.freeze = 0;
+    this.hitStop = 0;
+    this.dodgeTextCd = {};
     this.ai = createAIController(C.ai.difficulty);
   }
+
 
   announce(text: string) {
     this.announcement = text;
@@ -156,9 +165,15 @@ export class GameEngine {
   }
 
   // ---------- main loop ----------
-  update(dt: number, playerCmd: InputCommand) {
-    dt = Math.min(dt, 0.05);
+  update(rawDt: number, playerCmd: InputCommand) {
+    let dt = Math.min(rawDt, 0.05);
     if (this.phase === "RESULTS") return;
+
+    // hit stop: scale simulation time for a few tens of milliseconds
+    if (this.hitStop > 0) {
+      this.hitStop = Math.max(0, this.hitStop - dt);
+      dt *= C.feedback.hitStopScale;
+    }
 
     if (playerCmd.aim.x || playerCmd.aim.y) this.aimDir = norm(playerCmd.aim);
 
@@ -176,12 +191,23 @@ export class GameEngine {
 
     if (this.phase === "PLAYER_DEAD") {
       this.freeze -= dt;
+      const reacting = this.freeze > C.match.freezeOnDeath - C.feedback.deathReactionSeconds;
+      if (reacting) {
+        // short slow-motion death reaction: projectiles keep flying, nobody acts
+        const slow = dt * 0.35;
+        this.updateProjectiles(slow);
+        this.updateTimers(slow);
+      }
       this.updateEffects(dt);
       if (this.freeze <= 0) this.phase = "RESULTS";
       return;
     }
 
     this.time += dt;
+    for (const k of Object.keys(this.dodgeTextCd)) {
+      this.dodgeTextCd[k] = Math.max(0, (this.dodgeTextCd[k] ?? 0) - dt);
+    }
+
     if (this.announceTimer > 0) {
       this.announceTimer -= dt;
       if (this.announceTimer <= 0) this.announcement = null;
@@ -303,11 +329,16 @@ export class GameEngine {
     if (ml > 1) move = { x: move.x / ml, y: move.y / ml };
 
     if (f.dashFor > 0) {
-      // dash keeps its own velocity, leaves a trail
-      this.pushEffect({ kind: "dash-trail", pos: { ...f.pos }, radius: f.radius, life: 0.24, color: f.team === "A" ? "#38bdf8" : "#fb7185" });
+      // dash keeps its own velocity, leaves a dense readable trail
+      this.pushEffect({ kind: "dash-trail", pos: { ...f.pos }, radius: f.radius, life: 0.26, color: f.team === "A" ? "#38bdf8" : "#fb7185" });
     } else {
-      const target = scale(move, this.speedOf(f) * Math.min(1, ml || 0));
-      const rate = ml > 0.02 ? C.vanguard.acceleration : C.vanguard.deceleration;
+      const maxSpeed = this.speedOf(f);
+      const target = scale(move, maxSpeed * Math.min(1, ml || 0));
+      let rate: number = ml > 0.02 ? C.vanguard.acceleration : C.vanguard.deceleration;
+      // bleed off dash overspeed over the recovery window instead of snapping
+      const speed = Math.hypot(f.vel.x, f.vel.y);
+      if (speed > maxSpeed * 1.05) rate = Math.max(rate, (speed - maxSpeed) / Math.max(0.01, C.abilities.w.recovery));
+
       const diff = sub(target, f.vel);
       const dl = Math.hypot(diff.x, diff.y);
       const maxStep = rate * dt;
@@ -320,12 +351,16 @@ export class GameEngine {
 
     const wanted = add(f.pos, step);
     const resolved = this.collide(wanted, f.radius);
+    const blocked = Math.abs(resolved.x - wanted.x) > 0.01 || Math.abs(resolved.y - wanted.y) > 0.01;
+    if (f.team === "A") this.debugInfo.playerBlocked = blocked;
+    else this.debugInfo.enemyBlocked = blocked;
     // if a wall stopped us, kill the velocity component into it
-    if (f.dashFor <= 0 && (Math.abs(resolved.x - wanted.x) > 0.01 || Math.abs(resolved.y - wanted.y) > 0.01)) {
+    if (f.dashFor <= 0 && blocked) {
       if (Math.abs(resolved.x - wanted.x) > 0.01) f.vel.x = 0;
       if (Math.abs(resolved.y - wanted.y) > 0.01) f.vel.y = 0;
     }
     f.pos = resolved;
+
 
     if (cmd.cast) this.tryCast(f, cmd.cast, aim);
   }
@@ -351,7 +386,12 @@ export class GameEngine {
     return out;
   }
 
-  private spawnProjectile(f: Fighter, kind: ProjectileKind, dir: Vec, opts: { speed: number; radius: number; damage: number; range: number }) {
+  private spawnProjectile(
+    f: Fighter,
+    kind: ProjectileKind,
+    dir: Vec,
+    opts: { speed: number; radius: number; damage: number; range: number; trailMax: number },
+  ) {
     const origin = add(f.pos, scale(dir, f.radius + 6));
     this.projectiles.push({
       id: nid("p"),
@@ -366,6 +406,7 @@ export class GameEngine {
       traveled: 0,
       range: opts.range,
       trail: [],
+      trailMax: opts.trailMax,
       tracked: true,
       resolved: false,
     });
@@ -373,9 +414,9 @@ export class GameEngine {
       kind: "muzzle",
       pos: origin,
       dir,
-      radius: kind === "q" ? 26 : 16,
-      life: 0.14,
-      color: f.team === "A" ? "#67e8f9" : "#fda4af",
+      radius: kind === "q" ? 30 : 15,
+      life: kind === "q" ? 0.2 : 0.12,
+      color: f.team === "A" ? (kind === "q" ? "#c4b5fd" : "#67e8f9") : kind === "q" ? "#fdba74" : "#fda4af",
     });
   }
 
@@ -393,6 +434,7 @@ export class GameEngine {
         radius: v.attackProjectileRadius,
         damage: v.attackDamage * this.damageMult(f),
         range: v.attackRange,
+        trailMax: v.attackTrailLength,
       });
       return;
     }
@@ -405,13 +447,19 @@ export class GameEngine {
         pos: { ...f.pos },
         dir,
         radius: q.range,
-        life: q.telegraph,
-        color: f.team === "A" ? "#22d3ee" : "#f43f5e",
+        life: q.qTelegraphDuration,
+        color: f.team === "A" ? "#a78bfa" : "#fb923c",
       });
       const damage = q.damage * this.damageMult(f);
-      this.later(q.telegraph, () => {
+      this.later(q.qTelegraphDuration, () => {
         if (!f.alive) return;
-        this.spawnProjectile(f, "q", dir, { speed: q.speed, radius: q.radius, damage, range: q.range });
+        this.spawnProjectile(f, "q", dir, {
+          speed: q.speed,
+          radius: q.radius,
+          damage,
+          range: q.range,
+          trailMax: q.trailLength,
+        });
       });
       return;
     }
@@ -421,10 +469,13 @@ export class GameEngine {
       f.cooldowns.w = w.cooldown * cdm;
       f.dashFor = w.duration;
       f.invulnFor = w.invulnerable;
+      // instant, fully predictable dash vector (no acceleration ramp)
       f.vel = scale(dir, w.distance / w.duration);
-      this.pushEffect({ kind: "hit", pos: { ...f.pos }, radius: 40, life: 0.25, color: "#a5f3fc" });
+      f.knockback = { x: 0, y: 0 };
+      this.pushEffect({ kind: "dodge-ring", pos: { ...f.pos }, radius: 44, life: 0.28, color: "#a5f3fc" });
       return;
     }
+
 
     if (key === "e") {
       const e = C.abilities.e;
@@ -471,19 +522,40 @@ export class GameEngine {
     return (t as Fighter).team !== undefined;
   }
 
-  /** Central damage entry point — nothing else should touch hp. */
+  /** Central damage entry point — nothing else should touch hp. Same path for player and AI. */
   applyDamage(source: Fighter | Mob | null, target: Fighter | Mob, amount: number) {
     if (!target.alive) return;
     const R = C.abilities.r;
+    const F = C.feedback;
     if (this.isFighter(target) && (target.invulnFor > 0 || target.dashFor > 0)) {
-      this.pushEffect({ kind: "text", pos: { ...target.pos }, text: "DODGE", life: 0.7, color: "#a3e635" });
+      // i-frame dodge: one popup per window, plus a soft ring pulse
+      if ((this.dodgeTextCd[target.id] ?? 0) <= 0) {
+        this.dodgeTextCd[target.id] = F.dodgeTextCooldown;
+        this.pushEffect({ kind: "text", pos: { ...target.pos }, text: "DODGE", life: 0.6, color: "#a3e635" });
+      }
+      this.pushEffect({
+        kind: "dodge-ring",
+        pos: { ...target.pos },
+        radius: target.radius + 16,
+        life: 0.3,
+        color: "#a3e635",
+      });
       target.ultCharge = Math.min(R.chargeMax, target.ultCharge + R.chargePerDodge);
       return;
     }
     const dmg = Math.max(0, amount);
     target.hp -= dmg;
-    target.hitFlash = C.feedback.hitFlashDuration;
-    this.pushEffect({ kind: "hit", pos: { ...target.pos }, radius: 20, life: 0.22, color: "#fef08a" });
+    target.hitFlash = F.hitFlashDuration;
+    const heavy = dmg >= C.abilities.q.damage * 0.8;
+    this.hitStop = Math.max(this.hitStop, heavy ? F.hitStopSecondsHeavy : F.hitStopSeconds);
+    this.pushEffect({ kind: "hit", pos: { ...target.pos }, radius: 18, life: 0.18, color: "#fff7c2" });
+    this.pushEffect({
+      kind: "impact-ring",
+      pos: { ...target.pos },
+      radius: target.radius + (heavy ? 26 : 14),
+      life: heavy ? 0.32 : 0.22,
+      color: heavy ? "#fbbf24" : "#fde68a",
+    });
     this.pushEffect({
       kind: "text",
       pos: { x: target.pos.x + (Math.random() - 0.5) * 16, y: target.pos.y },
@@ -491,6 +563,7 @@ export class GameEngine {
       life: C.feedback.damageTextLife,
       color: this.isFighter(target) && target.team === "A" ? "#fca5a5" : "#fde68a",
     });
+
 
     if (source && this.isFighter(source)) {
       source.stats.damageDealt += dmg;
@@ -531,9 +604,13 @@ export class GameEngine {
     this.winner = f.team === "A" ? "B" : "A";
     this.phase = "PLAYER_DEAD";
     this.freeze = C.match.freezeOnDeath;
+    this.hitStop = Math.max(this.hitStop, 0.09);
+    f.vel = { x: 0, y: 0 };
     this.pushEffect({ kind: "hit", pos: { ...f.pos }, radius: 110, life: 1.2, color: "#ef4444" });
     this.pushEffect({ kind: "shockwave", pos: { ...f.pos }, radius: 90, life: 0.6, color: "#ef4444" });
+    this.pushEffect({ kind: "impact-ring", pos: { ...f.pos }, radius: 150, life: 0.9, color: "#f87171" });
   }
+
 
   // ---------- mobs ----------
   private updateMobs(dt: number) {
@@ -593,7 +670,7 @@ export class GameEngine {
       if (p.resolved) continue;
       const step = scale(p.dir, p.speed * dt);
       p.trail.push({ ...p.pos });
-      if (p.trail.length > 8) p.trail.shift();
+      if (p.trail.length > p.trailMax) p.trail.shift();
       p.pos = add(p.pos, step);
       p.traveled += Math.hypot(step.x, step.y);
 
@@ -621,17 +698,26 @@ export class GameEngine {
             p.pos.y < wall.y + wall.h + p.radius
           ) {
             dead = true;
-            this.pushEffect({ kind: "hit", pos: { ...p.pos }, radius: 14, life: 0.2, color: "#94a3b8" });
+            this.pushEffect({ kind: "fizzle", pos: { ...p.pos }, radius: p.radius * 2, life: 0.22, color: "#94a3b8" });
             break;
           }
         }
       }
       if (!dead && (p.traveled > p.range || p.pos.x < 0 || p.pos.y < 0 || p.pos.x > C.arena.width || p.pos.y > C.arena.height)) {
         dead = true;
+        // subtle miss puff — never a damage number
+        this.pushEffect({
+          kind: "fizzle",
+          pos: { ...p.pos },
+          radius: p.radius * 1.6,
+          life: 0.2,
+          color: p.team === "A" ? "#38bdf8" : "#fb7185",
+        });
       }
 
       if (dead) {
         p.resolved = true;
+
         if (p.tracked) {
           if (hit) owner.stats.abilitiesHit += 1;
           else owner.stats.abilitiesMissed += 1;
