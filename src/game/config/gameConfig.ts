@@ -56,22 +56,27 @@ export const GAME_CONFIG = {
     /** units/s^2 — higher = snappier stop */
     deceleration: 3200,
     attackDamage: 16,
-    attackCooldown: 0.6,
+    attackCooldown: 0.62,
     attackRange: 430,
+    /** fast + flat: ATK is the reliable poke, ~0.48s to max range */
     attackProjectileSpeed: 900,
-    attackProjectileRadius: 10,
+    attackProjectileRadius: 9,
+    attackTrailLength: 7,
     /** legacy melee arc values, unused by the projectile attack */
     attackArc: Math.PI / 3,
   },
   abilities: {
     q: {
       name: "Strike",
-      cooldown: 3,
-      damage: 48,
-      speed: 980,
+      cooldown: 4,
+      damage: 46,
+      /** slower + fatter than ATK so it reads as a dodgeable skillshot (~0.86s to max range) */
+      speed: 760,
       range: 640,
-      radius: 14,
-      telegraph: 0.18,
+      radius: 17,
+      /** windup before the bolt leaves — must be reactable but never turn-based */
+      qTelegraphDuration: 0.3,
+      trailLength: 14,
     },
     w: {
       name: "Dash",
@@ -79,8 +84,11 @@ export const GAME_CONFIG = {
       distance: 230,
       duration: 0.16,
       invulnerable: 0.3,
+      /** movement is locked to the dash vector for this long (feels predictable) */
+      recovery: 0.06,
     },
     e: { name: "Shockwave", cooldown: 8, radius: 150, damage: 35, knockback: 260, telegraph: 0.25 },
+
     r: {
       name: "Overdrive",
       chargeMax: 100,
