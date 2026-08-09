@@ -122,8 +122,11 @@ export class GameEngine {
     this.guardianSpawned = false;
     this.coreWave = 0;
     this.freeze = 0;
+    this.hitStop = 0;
+    this.dodgeTextCd = {};
     this.ai = createAIController(C.ai.difficulty);
   }
+
 
   announce(text: string) {
     this.announcement = text;
