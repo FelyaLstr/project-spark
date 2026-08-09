@@ -93,6 +93,12 @@ export class GameEngine {
   private guardianSpawned = false;
   private coreWave = 0;
   private freeze = 0;
+  /** real-time remaining of the current hit pause */
+  hitStop = 0;
+  private dodgeTextCd: Record<string, number> = {};
+  /** last frame's collision state, for the debug overlay */
+  debugInfo = { playerBlocked: false, enemyBlocked: false, fighterContact: false };
+
 
   readonly corePos: Vec = { x: C.arena.width / 2, y: C.arena.height / 2 };
 
