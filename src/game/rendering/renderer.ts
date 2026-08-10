@@ -150,16 +150,20 @@ function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    const label =
+      camp.phase === "COMBAT"
+        ? "COMBAT"
+        : camp.phase === "AVAILABLE"
+          ? "AVAILABLE"
+          : camp.phase === "CLEARED"
+            ? "CLEARED"
+            : `RESPAWN ${Math.ceil(camp.respawnIn)}s`;
+
     if (camp.phase === "CLEARED" || camp.phase === "RESPAWNING") {
       ctx.fillStyle = "rgba(148,163,184,0.7)";
       ctx.font = "600 15px ui-sans-serif, system-ui, sans-serif";
       ctx.textAlign = "center";
-      ctx.fillText(
-        camp.phase === "CLEARED" ? "CAMP CLEARED" : `RESPAWN ${Math.ceil(camp.respawnIn)}s`,
-        camp.pos.x,
-        camp.pos.y + 5,
-      );
-      // respawn progress arc
+      ctx.fillText(label, camp.pos.x, camp.pos.y + 5);
       if (camp.phase === "RESPAWNING") {
         const t = 1 - camp.respawnIn / C.mobs.respawnSeconds;
         ctx.strokeStyle = "rgba(163,230,53,0.5)";
@@ -168,6 +172,11 @@ function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
         ctx.arc(camp.pos.x, camp.pos.y, camp.radius, -Math.PI / 2, -Math.PI / 2 + t * Math.PI * 2);
         ctx.stroke();
       }
+    } else {
+      ctx.fillStyle = camp.phase === "COMBAT" ? "rgba(251,191,36,0.95)" : "rgba(163,230,53,0.8)";
+      ctx.font = "600 13px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(label, camp.pos.x, camp.pos.y - camp.radius - 16);
     }
     ctx.restore();
   }

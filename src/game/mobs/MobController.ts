@@ -114,13 +114,24 @@ export function updateMobs(ctx: MobContext, dt: number) {
 /** Camp phase bookkeeping + whole-camp respawn. */
 function updateCamps(ctx: MobContext, dt: number) {
   for (const camp of ctx.camps) {
-    if (camp.phase === "PENDING") continue;
+    const campMobs = ctx.mobs.filter((m) => m.campId === camp.id);
+    const alive = campMobs.some((m) => m.alive);
 
-    const alive = ctx.mobs.some((m) => m.campId === camp.id && m.alive);
+    if (camp.phase === "PENDING") {
+      const activated = ctx.fighters.some((f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campActivationRadius);
+      if (!activated) continue;
+
+      camp.phase = "AVAILABLE";
+      camp.respawnIn = 0;
+      if (!campMobs.length) {
+        ctx.mobs.push(...spawnCampMobs(camp));
+        ctx.pushEffect({ kind: "core-ring", pos: { ...camp.pos }, radius: camp.radius, life: 0.7, color: "#a3e635" });
+      }
+      continue;
+    }
 
     if (camp.phase === "CLEARED" || camp.phase === "RESPAWNING") {
       camp.respawnIn = Math.max(0, camp.respawnIn - dt);
-      // "CAMP CLEARED" reads for a moment, then it becomes a respawn countdown
       camp.phase = camp.respawnIn > C.mobs.respawnSeconds - 2 ? "CLEARED" : "RESPAWNING";
       if (camp.respawnIn <= 0) {
         for (let i = ctx.mobs.length - 1; i >= 0; i--) if (ctx.mobs[i]!.campId === camp.id) ctx.mobs.splice(i, 1);
@@ -137,11 +148,10 @@ function updateCamps(ctx: MobContext, dt: number) {
       continue;
     }
 
-    const contested = ctx.fighters.some((f) => f.alive && dist(f.pos, camp.pos) < camp.radius + 60);
-    const fighting = ctx.mobs.some((m) => m.campId === camp.id && m.alive && (m.state === "CHASE" || m.state === "ATTACK"));
+    const contested = ctx.fighters.some((f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campCombatRadius);
+    const fighting = campMobs.some((m) => m.alive && (m.state === "CHASE" || m.state === "ATTACK"));
     camp.phase = contested || fighting ? "COMBAT" : "AVAILABLE";
   }
-
 }
 
 function nearest(fs: Fighter[], p: Vec): Fighter | null {

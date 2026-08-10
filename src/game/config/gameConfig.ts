@@ -9,8 +9,8 @@ export const GAME_CONFIG = {
     neutralMobs: true, // Sprint 3
     guardian: false, // parked — Sprint 3 is crawlers only
     essenceUpgrades: true, // Sprint 3
-    coreObjective: false, // Sprint 4 (Core stays visually IDLE)
-    suddenDeath: false, // Sprint 4
+    coreObjective: true, // Sprint 4: the core becomes an active objective
+    suddenDeath: true, // Sprint 4: late-game collapse escalates the match
     shockwaveAbility: false, // E is parked for now
   },
 
@@ -214,6 +214,10 @@ export const GAME_CONFIG = {
     ],
     /** subtle camp marker radius (also used for camp-presence checks) */
     campRadius: 105,
+    /** distance at which a camp becomes active after player interaction */
+    campActivationRadius: 165,
+    /** distance from the camp at which it is considered to be in combat */
+    campCombatRadius: 60,
     /** ring the crawlers idle on inside their camp */
     campSpread: 46,
     crawlersPerCamp: 3,

@@ -306,16 +306,6 @@ export class GameEngine {
     const t = this.time;
     const T = C.timeline;
     if (C.features.neutralMobs) {
-      if (!this.campsSpawned && t >= T.campsActivateAt) {
-        this.campsSpawned = true;
-        for (const camp of this.camps) {
-          camp.phase = "AVAILABLE";
-          camp.respawnIn = 0;
-          this.mobs.push(...spawnCampMobs(camp));
-          this.pushEffect({ kind: "core-ring", pos: { ...camp.pos }, radius: camp.radius, life: 0.9, color: "#a3e635" });
-        }
-        this.announce("CAMPS ACTIVE");
-      }
       if (C.features.guardian && !this.guardianSpawned && t >= T.guardianAt) {
         this.guardianSpawned = true;
         this.mobs.push(spawnGuardian());

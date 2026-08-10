@@ -3,6 +3,7 @@ import { GameEngine } from "@/game/combat/GameEngine";
 import { render } from "@/game/rendering/renderer";
 import { InputController } from "@/game/input/InputController";
 import { GAME_CONFIG } from "@/game/config/gameConfig";
+import { clamp } from "@/game/core/math";
 import type { AbilityKey, Snapshot, UpgradeKind } from "@/game/core/types";
 import { Joystick } from "./Joystick";
 import { AbilityButton } from "./AbilityButton";
@@ -30,12 +31,27 @@ const UPGRADES: { kind: UpgradeKind; label: string }[] = [
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
+function getCamera(viewW: number, viewH: number, playerPos: { x: number; y: number }) {
+  const zoom = Math.max(0.52, Math.min(0.95, viewW / 900));
+  const halfW = viewW / 2 / zoom;
+  const halfH = viewH / 2 / zoom;
+  return {
+    zoom,
+    cam: {
+      x: clamp(playerPos.x, Math.min(halfW, C.arena.width / 2), Math.max(C.arena.width - halfW, C.arena.width / 2)),
+      y: clamp(playerPos.y, Math.min(halfH, C.arena.height / 2), Math.max(C.arena.height - halfH, C.arena.height / 2)),
+    },
+  };
+}
+
 export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const engine = useMemo(() => new GameEngine(), []);
   const input = useMemo(() => new InputController(), []);
   const [hud, setHud] = useState<Snapshot | null>(null);
   const [flash, setFlash] = useState<UpgradeKind | null>(null);
+  const [fpsDisplay, setFpsDisplay] = useState(60);
+  const [isPortrait, setIsPortrait] = useState(() => (typeof window !== "undefined" ? window.innerHeight >= window.innerWidth : false));
   const finished = useRef(false);
 
 
@@ -48,6 +64,8 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
     let raf = 0;
     let last = performance.now();
     let hudTimer = 0;
+    let fpsTimer = 0;
+    let fps = 60;
 
     const resize = () => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -55,16 +73,26 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       canvas.height = canvas.clientHeight * dpr;
     };
     resize();
+    const updateOrientation = () => {
+      setIsPortrait(window.innerHeight >= window.innerWidth);
+    };
+
+    resize();
+    updateOrientation();
     window.addEventListener("resize", resize);
+    window.addEventListener("resize", updateOrientation);
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
-    let fps = 60;
     const loop = (now: number) => {
       const dt = (now - last) / 1000;
       last = now;
-      // smoothed fps, kept out of React state so telemetry never triggers a render
       if (dt > 0) fps += (1 / dt - fps) * 0.1;
+      fpsTimer -= dt;
+      if (fpsTimer <= 0) {
+        fpsTimer = 0.5;
+        setFpsDisplay(Math.round(fps));
+      }
       engine.update(dt, input.consume());
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -101,7 +129,12 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
     const ku = (e: KeyboardEvent) => input.keyUp(e.code);
     const mm = (e: MouseEvent) => {
       const r = canvas.getBoundingClientRect();
-      input.setAim({ x: e.clientX - (r.left + r.width / 2), y: e.clientY - (r.top + r.height / 2) });
+      const viewW = r.width || 1;
+      const viewH = r.height || 1;
+      const { zoom, cam } = getCamera(viewW, viewH, engine.player.pos);
+      const worldX = cam.x + (e.clientX - (r.left + viewW / 2)) / zoom;
+      const worldY = cam.y + (e.clientY - (r.top + viewH / 2)) / zoom;
+      input.setAim({ x: worldX - engine.player.pos.x, y: worldY - engine.player.pos.y });
     };
     const md = (e: MouseEvent) => {
       if (e.button === 0) input.queue("basic");
@@ -119,6 +152,7 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       cancelAnimationFrame(raf);
       ro.disconnect();
       window.removeEventListener("resize", resize);
+      window.removeEventListener("resize", updateOrientation);
       window.removeEventListener("keydown", kd);
       window.removeEventListener("keyup", ku);
       canvas.removeEventListener("mousemove", mm);
@@ -144,6 +178,10 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
 
       {/* Top HUD */}
       <div className="pointer-events-none absolute inset-x-0 top-0 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="absolute left-3 top-3 rounded-full border border-border/60 bg-card/70 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-muted-foreground shadow-sm">
+          <span className="mr-2">FPS</span>
+          <span className="font-mono text-sm font-bold text-foreground">{fpsDisplay}</span>
+        </div>
         <div className="flex items-center gap-3">
           <Bar label="YOU" ratio={p ? p.hp / p.maxHp : 1} value={p ? Math.ceil(p.hp) : 0} tone="primary" />
           <div className="shrink-0 text-center">
@@ -230,54 +268,104 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       )}
 
       {/* Bottom controls */}
-      <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <Joystick onChange={(v) => input.setMove(v)} />
-        <div className="flex items-end gap-3">
-          <div className="flex flex-col items-center gap-3">
-            <AbilityButton
-              label="R"
-              ability="r"
-              cooldown={0}
-              maxCooldown={0}
-              charge={ultReady}
-              onCast={cast}
-              aimable={false}
+      <div className="absolute inset-x-0 bottom-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        {isPortrait ? (
+          <div className="flex items-end justify-between gap-3">
+            <Joystick
+              onChange={(v) => {
+                input.setMove(v);
+                input.setAim(v);
+              }}
             />
-            <AbilityButton
-              label="W"
-              ability="w"
-              cooldown={p?.cooldowns.w ?? 0}
-              maxCooldown={C.abilities.w.cooldown}
-              onAim={(v) => input.setAim(v)}
-              onAimStart={aimStart}
-              onAimEnd={aimEnd}
-              onCast={cast}
-            />
+            <div className="flex items-end gap-3">
+              <div className="flex flex-col items-center gap-3">
+                <AbilityButton
+                  label="R"
+                  ability="r"
+                  cooldown={0}
+                  maxCooldown={0}
+                  charge={ultReady}
+                  onCast={cast}
+                  aimable={false}
+                />
+                <AbilityButton
+                  label="W"
+                  ability="w"
+                  cooldown={p?.cooldowns.w ?? 0}
+                  maxCooldown={C.abilities.w.cooldown}
+                  onCast={cast}
+                />
+              </div>
+              <div className="flex flex-col items-center gap-3">
+                <AbilityButton
+                  label="Q"
+                  ability="q"
+                  cooldown={p?.cooldowns.q ?? 0}
+                  maxCooldown={C.abilities.q.cooldown}
+                  onCast={cast}
+                />
+                <AbilityButton
+                  label="ATK"
+                  ability="basic"
+                  big
+                  cooldown={p?.cooldowns.basic ?? 0}
+                  maxCooldown={C.vanguard.attackCooldown}
+                  onCast={cast}
+                />
+              </div>
+            </div>
           </div>
-          <div className="flex flex-col items-center gap-3">
-            <AbilityButton
-              label="Q"
-              ability="q"
-              cooldown={p?.cooldowns.q ?? 0}
-              maxCooldown={C.abilities.q.cooldown}
-              onAim={(v) => input.setAim(v)}
-              onAimStart={aimStart}
-              onAimEnd={aimEnd}
-              onCast={cast}
-            />
-            <AbilityButton
-              label="ATK"
-              ability="basic"
-              big
-              cooldown={p?.cooldowns.basic ?? 0}
-              maxCooldown={C.vanguard.attackCooldown}
-              onAim={(v) => input.setAim(v)}
-              onAimStart={aimStart}
-              onAimEnd={aimEnd}
-              onCast={cast}
-            />
+        ) : (
+          <div className="flex items-end justify-between">
+            <Joystick onChange={(v) => input.setMove(v)} />
+            <div className="flex items-end gap-3">
+              <div className="flex flex-col items-center gap-3">
+                <AbilityButton
+                  label="R"
+                  ability="r"
+                  cooldown={0}
+                  maxCooldown={0}
+                  charge={ultReady}
+                  onCast={cast}
+                  aimable={false}
+                />
+                <AbilityButton
+                  label="W"
+                  ability="w"
+                  cooldown={p?.cooldowns.w ?? 0}
+                  maxCooldown={C.abilities.w.cooldown}
+                  onAim={(v) => input.setAim(v)}
+                  onAimStart={aimStart}
+                  onAimEnd={aimEnd}
+                  onCast={cast}
+                />
+              </div>
+              <div className="flex flex-col items-center gap-3">
+                <AbilityButton
+                  label="Q"
+                  ability="q"
+                  cooldown={p?.cooldowns.q ?? 0}
+                  maxCooldown={C.abilities.q.cooldown}
+                  onAim={(v) => input.setAim(v)}
+                  onAimStart={aimStart}
+                  onAimEnd={aimEnd}
+                  onCast={cast}
+                />
+                <AbilityButton
+                  label="ATK"
+                  ability="basic"
+                  big
+                  cooldown={p?.cooldowns.basic ?? 0}
+                  maxCooldown={C.vanguard.attackCooldown}
+                  onAim={(v) => input.setAim(v)}
+                  onAimStart={aimStart}
+                  onAimEnd={aimEnd}
+                  onCast={cast}
+                />
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <button
