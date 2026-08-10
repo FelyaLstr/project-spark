@@ -265,14 +265,17 @@ export class GameEngine {
             self: this.enemy,
             foe: this.player,
             mobs: this.mobs,
+            camps: this.camps,
             projectiles: this.projectiles,
             walls: C.arena.walls,
             coreActive: this.core.active,
             corePos: this.corePos,
+            buy: (kind) => this.buyUpgrade(kind, this.enemy),
           },
           dt,
         )
       : emptyCommand();
+
 
     this.updateFighter(this.player, playerCmd, dt);
     this.updateFighter(this.enemy, aiCmd, dt);
@@ -823,7 +826,10 @@ export class GameEngine {
       timeLeft: Math.max(0, C.match.durationSeconds - this.time),
       player: this.player,
       enemy: this.enemy,
+      essence: Math.floor(this.player.essence),
+      upgrades: { ...this.player.upgrades },
       core: this.core,
+
       safeRadius: this.safeRadius,
       winner: this.winner,
       announcement: this.announcement,

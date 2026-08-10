@@ -161,8 +161,13 @@ export type Snapshot = {
   timeLeft: number;
   player: Fighter;
   enemy: Fighter;
+  /** player's spendable essence, floored for display */
+  essence: number;
+  /** player's upgrade levels */
+  upgrades: Record<UpgradeKind, number>;
   core: CoreState;
   safeRadius: number | null;
   winner: Team | null;
   announcement: string | null;
+
 };
