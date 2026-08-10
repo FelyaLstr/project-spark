@@ -679,55 +679,21 @@ export class GameEngine {
 
   // ---------- mobs ----------
   private updateMobs(dt: number) {
-    for (const m of this.mobs) {
-      m.hitFlash = Math.max(0, m.hitFlash - dt);
-      if (!m.alive) {
-        m.respawnIn -= dt;
-        if (m.respawnIn <= 0 && m.kind === "crawler") {
-          const fresh = makeMob("crawler", m.home);
-          Object.assign(m, fresh, { id: m.id });
-        }
-        continue;
-      }
-      const cfg = m.kind === "crawler" ? C.mobs.crawler : C.mobs.guardian;
-      m.attackTimer = Math.max(0, m.attackTimer - dt);
-      if (m.telegraphFor > 0) m.telegraphFor = Math.max(0, m.telegraphFor - dt);
-
-      const candidates = [this.player, this.enemy].filter((f) => f.alive);
-      let target = candidates.find((f) => f.id === m.target) ?? null;
-      if (!target) {
-        target = candidates.find((f) => dist(f.pos, m.pos) < cfg.aggroRange) ?? null;
-        m.target = target?.id ?? null;
-      }
-      if (target && dist(m.home, m.pos) > cfg.leash) {
-        m.target = null;
-        target = null;
-      }
-
-      const goal = target ? target.pos : m.home;
-      const d = dist(m.pos, goal);
-      const stop = target ? m.radius + target.radius + 6 : 8;
-      if (d > stop) {
-        const dir = norm(sub(goal, m.pos));
-        m.pos = this.collide(add(m.pos, scale(dir, cfg.speed * dt)), m.radius);
-      } else if (target && m.attackTimer <= 0) {
-        m.attackTimer = cfg.attackCooldown;
-        if (m.kind === "guardian") {
-          m.telegraphFor = C.mobs.guardian.telegraph;
-          const pos = { ...m.pos };
-          this.pushEffect({ kind: "shockwave", pos, radius: 120, life: C.mobs.guardian.telegraph, color: "#f59e0b" });
-          const self = m;
-          this.later(C.mobs.guardian.telegraph, () => {
-            for (const f of [this.player, this.enemy]) {
-              if (f.alive && dist(pos, f.pos) < 120 + f.radius) this.applyDamage(self, f, cfg.damage);
-            }
-          });
-        } else {
-          this.applyDamage(m, target, cfg.damage);
-        }
-      }
-    }
+    if (!C.features.neutralMobs) return;
+    updateMobs(
+      {
+        mobs: this.mobs,
+        camps: this.camps,
+        fighters: [this.player, this.enemy],
+        applyDamage: (s, t, a) => this.applyDamage(s, t, a),
+        collide: (p, r) => this.collide(p, r),
+        pushEffect: (e) => this.pushEffect(e),
+        later: (s, fn) => this.later(s, fn),
+      },
+      dt,
+    );
   }
+
 
   // ---------- projectiles ----------
   private updateProjectiles(dt: number) {
