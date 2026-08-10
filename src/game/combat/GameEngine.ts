@@ -80,6 +80,8 @@ export class GameEngine {
   player = makeFighter("A", C.arena.spawnA);
   enemy = makeFighter("B", C.arena.spawnB);
   mobs: Mob[] = [];
+  camps: Camp[] = makeCamps();
+
   projectiles: Projectile[] = [];
   effects: Effect[] = [];
   core: CoreState = { active: false, progressA: 0, progressB: 0, ownedBy: null };
@@ -113,7 +115,10 @@ export class GameEngine {
     this.countdown = C.match.countdownSeconds;
     this.player = makeFighter("A", C.arena.spawnA);
     this.enemy = makeFighter("B", C.arena.spawnB);
+    resetMobIds();
     this.mobs = [];
+    this.camps = makeCamps();
+
     this.projectiles = [];
     this.effects = [];
     this.timers = [];
@@ -153,20 +158,55 @@ export class GameEngine {
     this.timers = keep;
   }
 
-  buyUpgrade(kind: "power" | "vitality" | "haste") {
-    if (!C.features.essenceUpgrades) return false;
-    const p = this.player;
-    if (p.essence < C.upgrades.cost || !p.alive) return false;
-    p.essence -= C.upgrades.cost;
-    p.upgrades[kind] += C.upgrades[kind];
+  /** Cost of the NEXT level of an upgrade (flat for now, but centralized). */
+  upgradeCost(_kind: UpgradeKind) {
+    return C.upgrades.cost;
+  }
+
+  canBuyUpgrade(f: Fighter, kind: UpgradeKind) {
+    return (
+      C.features.essenceUpgrades &&
+      f.alive &&
+      f.upgrades[kind] < C.upgrades.maxLevel &&
+      f.essence >= this.upgradeCost(kind)
+    );
+  }
+
+  /** Buys one level. Same entry point for the human HUD and the AI. */
+  buyUpgrade(kind: UpgradeKind, who: Fighter = this.player) {
+    if (!this.canBuyUpgrade(who, kind)) return false;
+    who.essence -= this.upgradeCost(kind);
+    who.upgrades[kind] += 1;
     if (kind === "vitality") {
-      const newMax = C.vanguard.maxHealth * (1 + p.upgrades.vitality);
-      p.hp += newMax - p.maxHp;
-      p.maxHp = newMax;
+      const newMax = C.vanguard.maxHealth * (1 + who.upgrades.vitality * C.upgrades.vitality);
+      who.hp = Math.min(newMax, who.hp + (newMax - who.maxHp));
+      who.maxHp = newMax;
     }
-    this.pushEffect({ kind: "text", pos: { ...p.pos }, text: kind.toUpperCase(), life: 1.1, color: "#7dd3fc" });
+    this.pushEffect({
+      kind: "text",
+      pos: { ...who.pos },
+      text: `${kind.toUpperCase()} ${who.upgrades[kind]}`,
+      life: 1.1,
+      color: "#7dd3fc",
+    });
+    this.pushEffect({ kind: "impact-ring", pos: { ...who.pos }, radius: who.radius + 30, life: 0.45, color: "#38bdf8" });
     return true;
   }
+
+  /** Essence is only ever granted here so the popup and stats stay in sync. */
+  private grantEssence(f: Fighter, amount: number, at: Vec) {
+    if (amount <= 0) return;
+    f.essence += amount;
+    f.stats.essenceEarned += amount;
+    this.pushEffect({
+      kind: "text",
+      pos: { x: at.x, y: at.y - 12 },
+      text: `+${amount} ESSENCE`,
+      life: 1,
+      color: "#67e8f9",
+    });
+  }
+
 
   // ---------- main loop ----------
   update(rawDt: number, playerCmd: InputCommand) {
@@ -265,15 +305,21 @@ export class GameEngine {
     if (C.features.neutralMobs) {
       if (!this.campsSpawned && t >= T.campsActivateAt) {
         this.campsSpawned = true;
-        this.mobs.push(...spawnCamps());
+        for (const camp of this.camps) {
+          camp.phase = "AVAILABLE";
+          camp.respawnIn = 0;
+          this.mobs.push(...spawnCampMobs(camp));
+          this.pushEffect({ kind: "core-ring", pos: { ...camp.pos }, radius: camp.radius, life: 0.9, color: "#a3e635" });
+        }
         this.announce("CAMPS ACTIVE");
       }
-      if (!this.guardianSpawned && t >= T.guardianAt) {
+      if (C.features.guardian && !this.guardianSpawned && t >= T.guardianAt) {
         this.guardianSpawned = true;
         this.mobs.push(spawnGuardian());
         this.announce("GUARDIAN AWAKENS");
       }
     }
+
     if (C.features.coreObjective) {
       if (this.coreWave === 0 && t >= T.coreActivateAt) {
         this.coreWave = 1;
@@ -301,17 +347,18 @@ export class GameEngine {
   }
 
   private damageMult(f: Fighter) {
-    let m = 1 + f.upgrades.power + f.buffs.guardianPower;
+    let m = 1 + f.upgrades.power * C.upgrades.power + f.buffs.guardianPower;
     if (f.ultActiveFor > 0) m *= C.abilities.r.damageMult;
     if (f.buffs.overchargeFor > 0) m *= 1 + C.core.damageBonus;
     return m;
   }
 
   private cdMult(f: Fighter) {
-    let m = 1 / (1 + f.upgrades.haste);
+    let m = 1 / (1 + f.upgrades.haste * C.upgrades.haste);
     if (f.ultActiveFor > 0) m *= 1 / C.abilities.r.attackSpeedMult;
     return m;
   }
+
 
   private updateFighter(f: Fighter, cmd: InputCommand, dt: number) {
     if (!f.alive) return;
