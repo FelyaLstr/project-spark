@@ -12,6 +12,7 @@ import {
 import type {
   AbilityKey,
   AimPreview,
+  Camp,
   CoreState,
   Effect,
   Fighter,
@@ -22,10 +23,13 @@ import type {
   ProjectileKind,
   Snapshot,
   Team,
+  UpgradeKind,
 } from "../core/types";
 import { emptyCommand } from "../core/types";
-import { spawnCamps, spawnGuardian, makeMob } from "../mobs/mobs";
+import { makeCamps, resetMobIds, spawnCampMobs, spawnGuardian } from "../mobs/mobs";
+import { updateMobs } from "../mobs/MobController";
 import { createAIController, type AIController } from "../ai/AIController";
+
 
 const C = GAME_CONFIG;
 let idc = 0;
