@@ -116,14 +116,13 @@ function updateCamps(ctx: MobContext, dt: number) {
   for (const camp of ctx.camps) {
     if (camp.phase === "PENDING") continue;
 
-    const mine = ctx.mobs.filter((m) => m.campId === camp.id);
-    const alive = mine.filter((m) => m.alive);
+    const alive = ctx.mobs.some((m) => m.campId === camp.id && m.alive);
 
-    if (camp.phase === "RESPAWNING") {
+    if (camp.phase === "CLEARED" || camp.phase === "RESPAWNING") {
       camp.respawnIn = Math.max(0, camp.respawnIn - dt);
+      // "CAMP CLEARED" reads for a moment, then it becomes a respawn countdown
+      camp.phase = camp.respawnIn > C.mobs.respawnSeconds - 2 ? "CLEARED" : "RESPAWNING";
       if (camp.respawnIn <= 0) {
-        ctx.mobs = ctx.mobs.filter((m) => m.campId !== camp.id);
-        // mutate in place: the engine holds the same array reference
         for (let i = ctx.mobs.length - 1; i >= 0; i--) if (ctx.mobs[i]!.campId === camp.id) ctx.mobs.splice(i, 1);
         ctx.mobs.push(...spawnCampMobs(camp));
         camp.phase = "AVAILABLE";
@@ -132,17 +131,17 @@ function updateCamps(ctx: MobContext, dt: number) {
       continue;
     }
 
-    if (!alive.length) {
-      if (camp.phase !== "CLEARED" && camp.phase !== "RESPAWNING") {
-        camp.phase = "RESPAWNING";
-        camp.respawnIn = C.mobs.respawnSeconds;
-      }
+    if (!alive) {
+      camp.phase = "CLEARED";
+      camp.respawnIn = C.mobs.respawnSeconds;
       continue;
     }
 
     const contested = ctx.fighters.some((f) => f.alive && dist(f.pos, camp.pos) < camp.radius + 60);
-    camp.phase = contested || alive.some((m) => m.state === "CHASE" || m.state === "ATTACK") ? "COMBAT" : "AVAILABLE";
+    const fighting = ctx.mobs.some((m) => m.campId === camp.id && m.alive && (m.state === "CHASE" || m.state === "ATTACK"));
+    camp.phase = contested || fighting ? "COMBAT" : "AVAILABLE";
   }
+
 }
 
 function nearest(fs: Fighter[], p: Vec): Fighter | null {
