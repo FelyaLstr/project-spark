@@ -2,14 +2,15 @@
 // Do NOT hardcode timings/stats elsewhere.
 
 export const GAME_CONFIG = {
-  /** Debug telemetry overlay (FPS, positions, velocity, cooldowns, collision). Never ship as true. */
+  /** Debug telemetry overlay (FPS, positions, velocity, cooldowns, mobs, essence). Never ship as true. */
   debug: false,
   /** Sprint toggles — keeps future systems in the codebase but out of the way. */
   features: {
-    neutralMobs: false, // Sprint 3
-    coreObjective: false, // Sprint 3 (Core stays visually IDLE)
-    suddenDeath: false, // Sprint 3
-    essenceUpgrades: false, // Sprint 3
+    neutralMobs: true, // Sprint 3
+    guardian: false, // parked — Sprint 3 is crawlers only
+    essenceUpgrades: true, // Sprint 3
+    coreObjective: false, // Sprint 4 (Core stays visually IDLE)
+    suddenDeath: false, // Sprint 4
     shockwaveAbility: false, // E is parked for now
   },
 
@@ -42,7 +43,8 @@ export const GAME_CONFIG = {
     minSafeRadius: 180,
   },
   timeline: {
-    campsActivateAt: 20,
+    /** neutral camps become available this many seconds after FIGHT */
+    campsActivateAt: 15,
     guardianAt: 60,
     coreActivateAt: 90,
     coreReactivateAt: 150,
@@ -117,6 +119,12 @@ export const GAME_CONFIG = {
         qChance: 0.35,
         strafe: 0.35,
         useUlt: 0.5,
+        /** chance to go farm when the player is far away */
+        farmChance: 0.4,
+        /** chance to punish a farming player */
+        contestChance: 0.25,
+        /** buys upgrades this often (seconds) once it can afford one */
+        buyInterval: 3.5,
       },
       normal: {
         reaction: 0.24,
@@ -128,6 +136,9 @@ export const GAME_CONFIG = {
         qChance: 0.55,
         strafe: 0.55,
         useUlt: 0.85,
+        farmChance: 0.6,
+        contestChance: 0.5,
+        buyInterval: 2.5,
       },
       hard: {
         reaction: 0.12,
@@ -139,25 +150,77 @@ export const GAME_CONFIG = {
         qChance: 0.85,
         strafe: 0.7,
         useUlt: 1,
+        farmChance: 0.75,
+        contestChance: 0.7,
+        buyInterval: 1.5,
       },
     },
     /** distance at which an incoming projectile triggers a dodge attempt */
     dodgeThreatDistance: 190,
     /** cap on predicted travel time so the AI never aims at absurd extrapolations */
     maxLeadSeconds: 0.9,
+    farm: {
+      /** the player must be at least this far away before farming is considered */
+      safeDistance: 620,
+      /** hp ratio below which the AI disengages */
+      retreatHpRatio: 0.3,
+      /** hp ratio it needs to recover to before re-engaging */
+      resumeHpRatio: 0.55,
+      /** how close the enemy must be to a camp to count as "farming there" */
+      contestRadius: 260,
+      /** how often the AI re-picks a behaviour (seconds) */
+      decisionInterval: 1.1,
+    },
   },
 
   mobs: {
-    crawler: { hp: 70, damage: 10, speed: 120, radius: 16, attackCooldown: 1.4, aggroRange: 220, leash: 300, essence: 5 },
-    guardian: { hp: 420, damage: 32, speed: 95, radius: 30, attackCooldown: 2.6, aggroRange: 280, leash: 380, essence: 30, telegraph: 0.8, abilityPowerBonus: 0.1 },
+    crawler: {
+      hp: 120,
+      damage: 8,
+      /** slower than the player's 260 */
+      speed: 140,
+      /** speed while walking home after a leash break */
+      returnSpeed: 190,
+      radius: 15,
+      /** short melee reach measured between hitboxes */
+      attackRange: 12,
+      attackCooldown: 1.2,
+      aggroRange: 210,
+      /** max distance from its camp before it gives up and walks home */
+      leash: 300,
+      essence: 5,
+      /** death effect length */
+      deathEffect: 0.45,
+    },
+    guardian: {
+      hp: 420,
+      damage: 32,
+      speed: 95,
+      returnSpeed: 130,
+      radius: 30,
+      attackRange: 20,
+      attackCooldown: 2.6,
+      aggroRange: 280,
+      leash: 380,
+      essence: 30,
+      telegraph: 0.8,
+      abilityPowerBonus: 0.1,
+      deathEffect: 0.6,
+    },
+    /** exactly two symmetric camps, both reachable by either player */
     camps: [
-      { x: 380, y: 420 },
-      { x: 1220, y: 420 },
-      { x: 380, y: 780 },
-      { x: 1220, y: 780 },
+      { x: 320, y: 600 },
+      { x: 1280, y: 600 },
     ],
-    crawlersPerCamp: 2,
+    /** subtle camp marker radius (also used for camp-presence checks) */
+    campRadius: 105,
+    /** ring the crawlers idle on inside their camp */
+    campSpread: 46,
+    crawlersPerCamp: 3,
+    /** the whole camp respawns together this long after the last crawler dies */
     respawnSeconds: 25,
+    /** mob hit feedback is dialled down vs. player-on-player hits */
+    feedbackScale: 0.6,
   },
   core: {
     captureSeconds: 4,
@@ -166,14 +229,18 @@ export const GAME_CONFIG = {
     speedBonus: 0.1,
   },
   upgrades: {
-    cost: 30,
+    cost: 20,
+    maxLevel: 3,
+    /** per level */
     power: 0.05,
     vitality: 0.05,
     haste: 0.05,
   },
   essence: {
-    perDamageToMob: 0.06,
-    perDamageToPlayer: 0.04,
+    startingEssence: 0,
+    /** no trickle income — essence only comes from crawler kills */
+    perDamageToMob: 0,
+    perDamageToPlayer: 0,
   },
   feedback: {
     hitFlashDuration: 0.16,
