@@ -12,6 +12,7 @@ import {
 import type {
   AbilityKey,
   AimPreview,
+  Camp,
   CoreState,
   Effect,
   Fighter,
@@ -22,10 +23,13 @@ import type {
   ProjectileKind,
   Snapshot,
   Team,
+  UpgradeKind,
 } from "../core/types";
 import { emptyCommand } from "../core/types";
-import { spawnCamps, spawnGuardian, makeMob } from "../mobs/mobs";
+import { makeCamps, resetMobIds, spawnCampMobs, spawnGuardian } from "../mobs/mobs";
+import { updateMobs } from "../mobs/MobController";
 import { createAIController, type AIController } from "../ai/AIController";
+
 
 const C = GAME_CONFIG;
 let idc = 0;
@@ -76,6 +80,8 @@ export class GameEngine {
   player = makeFighter("A", C.arena.spawnA);
   enemy = makeFighter("B", C.arena.spawnB);
   mobs: Mob[] = [];
+  camps: Camp[] = makeCamps();
+
   projectiles: Projectile[] = [];
   effects: Effect[] = [];
   core: CoreState = { active: false, progressA: 0, progressB: 0, ownedBy: null };
@@ -109,7 +115,10 @@ export class GameEngine {
     this.countdown = C.match.countdownSeconds;
     this.player = makeFighter("A", C.arena.spawnA);
     this.enemy = makeFighter("B", C.arena.spawnB);
+    resetMobIds();
     this.mobs = [];
+    this.camps = makeCamps();
+
     this.projectiles = [];
     this.effects = [];
     this.timers = [];
@@ -149,20 +158,55 @@ export class GameEngine {
     this.timers = keep;
   }
 
-  buyUpgrade(kind: "power" | "vitality" | "haste") {
-    if (!C.features.essenceUpgrades) return false;
-    const p = this.player;
-    if (p.essence < C.upgrades.cost || !p.alive) return false;
-    p.essence -= C.upgrades.cost;
-    p.upgrades[kind] += C.upgrades[kind];
+  /** Cost of the NEXT level of an upgrade (flat for now, but centralized). */
+  upgradeCost(_kind: UpgradeKind) {
+    return C.upgrades.cost;
+  }
+
+  canBuyUpgrade(f: Fighter, kind: UpgradeKind) {
+    return (
+      C.features.essenceUpgrades &&
+      f.alive &&
+      f.upgrades[kind] < C.upgrades.maxLevel &&
+      f.essence >= this.upgradeCost(kind)
+    );
+  }
+
+  /** Buys one level. Same entry point for the human HUD and the AI. */
+  buyUpgrade(kind: UpgradeKind, who: Fighter = this.player) {
+    if (!this.canBuyUpgrade(who, kind)) return false;
+    who.essence -= this.upgradeCost(kind);
+    who.upgrades[kind] += 1;
     if (kind === "vitality") {
-      const newMax = C.vanguard.maxHealth * (1 + p.upgrades.vitality);
-      p.hp += newMax - p.maxHp;
-      p.maxHp = newMax;
+      const newMax = C.vanguard.maxHealth * (1 + who.upgrades.vitality * C.upgrades.vitality);
+      who.hp = Math.min(newMax, who.hp + (newMax - who.maxHp));
+      who.maxHp = newMax;
     }
-    this.pushEffect({ kind: "text", pos: { ...p.pos }, text: kind.toUpperCase(), life: 1.1, color: "#7dd3fc" });
+    this.pushEffect({
+      kind: "text",
+      pos: { ...who.pos },
+      text: `${kind.toUpperCase()} ${who.upgrades[kind]}`,
+      life: 1.1,
+      color: "#7dd3fc",
+    });
+    this.pushEffect({ kind: "impact-ring", pos: { ...who.pos }, radius: who.radius + 30, life: 0.45, color: "#38bdf8" });
     return true;
   }
+
+  /** Essence is only ever granted here so the popup and stats stay in sync. */
+  private grantEssence(f: Fighter, amount: number, at: Vec) {
+    if (amount <= 0) return;
+    f.essence += amount;
+    f.stats.essenceEarned += amount;
+    this.pushEffect({
+      kind: "text",
+      pos: { x: at.x, y: at.y - 12 },
+      text: `+${amount} ESSENCE`,
+      life: 1,
+      color: "#67e8f9",
+    });
+  }
+
 
   // ---------- main loop ----------
   update(rawDt: number, playerCmd: InputCommand) {
@@ -221,14 +265,17 @@ export class GameEngine {
             self: this.enemy,
             foe: this.player,
             mobs: this.mobs,
+            camps: this.camps,
             projectiles: this.projectiles,
             walls: C.arena.walls,
             coreActive: this.core.active,
             corePos: this.corePos,
+            buy: (kind) => this.buyUpgrade(kind, this.enemy),
           },
           dt,
         )
       : emptyCommand();
+
 
     this.updateFighter(this.player, playerCmd, dt);
     this.updateFighter(this.enemy, aiCmd, dt);
@@ -261,15 +308,21 @@ export class GameEngine {
     if (C.features.neutralMobs) {
       if (!this.campsSpawned && t >= T.campsActivateAt) {
         this.campsSpawned = true;
-        this.mobs.push(...spawnCamps());
+        for (const camp of this.camps) {
+          camp.phase = "AVAILABLE";
+          camp.respawnIn = 0;
+          this.mobs.push(...spawnCampMobs(camp));
+          this.pushEffect({ kind: "core-ring", pos: { ...camp.pos }, radius: camp.radius, life: 0.9, color: "#a3e635" });
+        }
         this.announce("CAMPS ACTIVE");
       }
-      if (!this.guardianSpawned && t >= T.guardianAt) {
+      if (C.features.guardian && !this.guardianSpawned && t >= T.guardianAt) {
         this.guardianSpawned = true;
         this.mobs.push(spawnGuardian());
         this.announce("GUARDIAN AWAKENS");
       }
     }
+
     if (C.features.coreObjective) {
       if (this.coreWave === 0 && t >= T.coreActivateAt) {
         this.coreWave = 1;
@@ -297,17 +350,18 @@ export class GameEngine {
   }
 
   private damageMult(f: Fighter) {
-    let m = 1 + f.upgrades.power + f.buffs.guardianPower;
+    let m = 1 + f.upgrades.power * C.upgrades.power + f.buffs.guardianPower;
     if (f.ultActiveFor > 0) m *= C.abilities.r.damageMult;
     if (f.buffs.overchargeFor > 0) m *= 1 + C.core.damageBonus;
     return m;
   }
 
   private cdMult(f: Fighter) {
-    let m = 1 / (1 + f.upgrades.haste);
+    let m = 1 / (1 + f.upgrades.haste * C.upgrades.haste);
     if (f.ultActiveFor > 0) m *= 1 / C.abilities.r.attackSpeedMult;
     return m;
   }
+
 
   private updateFighter(f: Fighter, cmd: InputCommand, dt: number) {
     if (!f.alive) return;
@@ -544,33 +598,38 @@ export class GameEngine {
       return;
     }
     const dmg = Math.max(0, amount);
+    const vsMob = !this.isFighter(target);
+    // mob hits use the same feedback systems, just dialled down
+    const fs = vsMob ? C.mobs.feedbackScale : 1;
     target.hp -= dmg;
     target.hitFlash = F.hitFlashDuration;
-    const heavy = dmg >= C.abilities.q.damage * 0.8;
-    this.hitStop = Math.max(this.hitStop, heavy ? F.hitStopSecondsHeavy : F.hitStopSeconds);
-    this.pushEffect({ kind: "hit", pos: { ...target.pos }, radius: 18, life: 0.18, color: "#fff7c2" });
+    const heavy = !vsMob && dmg >= C.abilities.q.damage * 0.8;
+    this.hitStop = Math.max(this.hitStop, (heavy ? F.hitStopSecondsHeavy : F.hitStopSeconds) * fs);
+    this.pushEffect({
+      kind: "hit",
+      pos: { ...target.pos },
+      radius: 18 * fs,
+      life: 0.18 * fs,
+      color: vsMob ? "#d9f99d" : "#fff7c2",
+    });
     this.pushEffect({
       kind: "impact-ring",
       pos: { ...target.pos },
-      radius: target.radius + (heavy ? 26 : 14),
-      life: heavy ? 0.32 : 0.22,
-      color: heavy ? "#fbbf24" : "#fde68a",
+      radius: target.radius + (heavy ? 26 : 14) * fs,
+      life: (heavy ? 0.32 : 0.22) * fs,
+      color: vsMob ? "#bef264" : heavy ? "#fbbf24" : "#fde68a",
     });
     this.pushEffect({
       kind: "text",
       pos: { x: target.pos.x + (Math.random() - 0.5) * 16, y: target.pos.y },
       text: `${Math.round(dmg)}`,
-      life: C.feedback.damageTextLife,
-      color: this.isFighter(target) && target.team === "A" ? "#fca5a5" : "#fde68a",
+      life: C.feedback.damageTextLife * (vsMob ? 0.75 : 1),
+      color: vsMob ? "#d9f99d" : this.isFighter(target) && target.team === "A" ? "#fca5a5" : "#fde68a",
     });
-
 
     if (source && this.isFighter(source)) {
       source.stats.damageDealt += dmg;
       source.ultCharge = Math.min(R.chargeMax, source.ultCharge + dmg * R.chargePerDamageDealt);
-      const gain = this.isFighter(target) ? dmg * C.essence.perDamageToPlayer : dmg * C.essence.perDamageToMob;
-      source.essence += gain;
-      source.stats.essenceEarned += gain;
     }
     if (this.isFighter(target)) {
       target.stats.damageTaken += dmg;
@@ -584,20 +643,29 @@ export class GameEngine {
         this.onFighterDeath(target);
       } else {
         const mob = target;
-        mob.respawnIn = C.mobs.respawnSeconds;
+        mob.state = "DEAD";
+        mob.target = null;
+        // essence goes to the final blow only
         if (source && this.isFighter(source)) {
           source.stats.mobsKilled += 1;
           const cfg = mob.kind === "crawler" ? C.mobs.crawler : C.mobs.guardian;
-          source.essence += cfg.essence;
-          source.stats.essenceEarned += cfg.essence;
+          this.grantEssence(source, cfg.essence, mob.pos);
           if (mob.kind === "guardian") {
             source.buffs.guardianPower += C.mobs.guardian.abilityPowerBonus;
             this.announce(source.team === "A" ? "YOU SLEW THE GUARDIAN" : "ENEMY SLEW THE GUARDIAN");
           }
         }
-        this.pushEffect({ kind: "hit", pos: { ...mob.pos }, radius: mob.radius * 2, life: 0.4, color: "#f97316" });
+        this.pushEffect({ kind: "hit", pos: { ...mob.pos }, radius: mob.radius * 2, life: 0.4, color: "#84cc16" });
+        this.pushEffect({
+          kind: "impact-ring",
+          pos: { ...mob.pos },
+          radius: mob.radius + 22,
+          life: 0.35,
+          color: "#a3e635",
+        });
       }
     }
+
   }
 
   private onFighterDeath(f: Fighter) {
@@ -614,55 +682,21 @@ export class GameEngine {
 
   // ---------- mobs ----------
   private updateMobs(dt: number) {
-    for (const m of this.mobs) {
-      m.hitFlash = Math.max(0, m.hitFlash - dt);
-      if (!m.alive) {
-        m.respawnIn -= dt;
-        if (m.respawnIn <= 0 && m.kind === "crawler") {
-          const fresh = makeMob("crawler", m.home);
-          Object.assign(m, fresh, { id: m.id });
-        }
-        continue;
-      }
-      const cfg = m.kind === "crawler" ? C.mobs.crawler : C.mobs.guardian;
-      m.attackTimer = Math.max(0, m.attackTimer - dt);
-      if (m.telegraphFor > 0) m.telegraphFor = Math.max(0, m.telegraphFor - dt);
-
-      const candidates = [this.player, this.enemy].filter((f) => f.alive);
-      let target = candidates.find((f) => f.id === m.target) ?? null;
-      if (!target) {
-        target = candidates.find((f) => dist(f.pos, m.pos) < cfg.aggroRange) ?? null;
-        m.target = target?.id ?? null;
-      }
-      if (target && dist(m.home, m.pos) > cfg.leash) {
-        m.target = null;
-        target = null;
-      }
-
-      const goal = target ? target.pos : m.home;
-      const d = dist(m.pos, goal);
-      const stop = target ? m.radius + target.radius + 6 : 8;
-      if (d > stop) {
-        const dir = norm(sub(goal, m.pos));
-        m.pos = this.collide(add(m.pos, scale(dir, cfg.speed * dt)), m.radius);
-      } else if (target && m.attackTimer <= 0) {
-        m.attackTimer = cfg.attackCooldown;
-        if (m.kind === "guardian") {
-          m.telegraphFor = C.mobs.guardian.telegraph;
-          const pos = { ...m.pos };
-          this.pushEffect({ kind: "shockwave", pos, radius: 120, life: C.mobs.guardian.telegraph, color: "#f59e0b" });
-          const self = m;
-          this.later(C.mobs.guardian.telegraph, () => {
-            for (const f of [this.player, this.enemy]) {
-              if (f.alive && dist(pos, f.pos) < 120 + f.radius) this.applyDamage(self, f, cfg.damage);
-            }
-          });
-        } else {
-          this.applyDamage(m, target, cfg.damage);
-        }
-      }
-    }
+    if (!C.features.neutralMobs) return;
+    updateMobs(
+      {
+        mobs: this.mobs,
+        camps: this.camps,
+        fighters: [this.player, this.enemy],
+        applyDamage: (s, t, a) => this.applyDamage(s, t, a),
+        collide: (p, r) => this.collide(p, r),
+        pushEffect: (e) => this.pushEffect(e),
+        later: (s, fn) => this.later(s, fn),
+      },
+      dt,
+    );
   }
+
 
   // ---------- projectiles ----------
   private updateProjectiles(dt: number) {
@@ -792,7 +826,10 @@ export class GameEngine {
       timeLeft: Math.max(0, C.match.durationSeconds - this.time),
       player: this.player,
       enemy: this.enemy,
+      essence: Math.floor(this.player.essence),
+      upgrades: { ...this.player.upgrades },
       core: this.core,
+
       safeRadius: this.safeRadius,
       winner: this.winner,
       announcement: this.announcement,

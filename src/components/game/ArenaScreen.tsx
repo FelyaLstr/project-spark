@@ -3,7 +3,7 @@ import { GameEngine } from "@/game/combat/GameEngine";
 import { render } from "@/game/rendering/renderer";
 import { InputController } from "@/game/input/InputController";
 import { GAME_CONFIG } from "@/game/config/gameConfig";
-import type { AbilityKey, Snapshot } from "@/game/core/types";
+import type { AbilityKey, Snapshot, UpgradeKind } from "@/game/core/types";
 import { Joystick } from "./Joystick";
 import { AbilityButton } from "./AbilityButton";
 
@@ -22,6 +22,12 @@ export type MatchResult = {
 
 type Props = { opponentName: string; onFinish: (r: MatchResult) => void; onQuit: () => void };
 
+const UPGRADES: { kind: UpgradeKind; label: string }[] = [
+  { kind: "power", label: "PWR" },
+  { kind: "vitality", label: "VIT" },
+  { kind: "haste", label: "HST" },
+];
+
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
 export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
@@ -29,7 +35,9 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   const engine = useMemo(() => new GameEngine(), []);
   const input = useMemo(() => new InputController(), []);
   const [hud, setHud] = useState<Snapshot | null>(null);
+  const [flash, setFlash] = useState<UpgradeKind | null>(null);
   const finished = useRef(false);
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -129,6 +137,7 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   const p = hud?.player;
   const ultReady = p ? p.ultCharge / C.abilities.r.chargeMax : 0;
 
+
   return (
     <div className="relative h-[100dvh] w-full touch-none overflow-hidden overscroll-none bg-background">
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
@@ -153,9 +162,56 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
         </div>
         <div className="mt-2 flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
           <span className="rounded bg-card/70 px-2 py-1">ULT {Math.floor(ultReady * 100)}%</span>
+          {C.features.essenceUpgrades && (
+            <span className="rounded bg-cyan-400/15 px-2 py-1 font-bold text-cyan-300">ESSENCE {hud?.essence ?? 0}</span>
+          )}
           {p && p.ultActiveFor > 0 && <Chip>OVERDRIVE</Chip>}
         </div>
       </div>
+
+      {/* Temporary upgrades (match-only) */}
+      {C.features.essenceUpgrades && hud && (
+        <div className="absolute left-3 top-1/2 flex -translate-y-1/2 flex-col gap-2">
+          {UPGRADES.map((u) => {
+            const level = hud.upgrades[u.kind];
+            const maxed = level >= C.upgrades.maxLevel;
+            const affordable = !maxed && hud.essence >= C.upgrades.cost;
+            return (
+              <button
+                key={u.kind}
+                onClick={() => {
+                  if (engine.buyUpgrade(u.kind)) {
+                    setFlash(u.kind);
+                    window.setTimeout(() => setFlash((f) => (f === u.kind ? null : f)), 450);
+                  }
+                }}
+                disabled={!affordable}
+                className={`w-[74px] rounded-lg border px-1.5 py-1.5 text-center transition ${
+                  flash === u.kind
+                    ? "scale-105 border-cyan-300 bg-cyan-400/30"
+                    : affordable
+                      ? "border-cyan-400/50 bg-card/80"
+                      : "border-border/50 bg-card/50 opacity-55"
+                }`}
+              >
+                <div className="text-[10px] font-black uppercase tracking-wider text-foreground">{u.label}</div>
+                <div className="mt-1 flex justify-center gap-0.5">
+                  {Array.from({ length: C.upgrades.maxLevel }).map((_, i) => (
+                    <span
+                      key={i}
+                      className={`h-1.5 w-3.5 rounded-full ${i < level ? "bg-cyan-300" : "bg-muted-foreground/30"}`}
+                    />
+                  ))}
+                </div>
+                <div className="mt-1 text-[9px] uppercase tracking-widest text-muted-foreground">
+                  {maxed ? "MAX" : `${C.upgrades.cost} ESS`}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
 
       {/* Announcement / countdown */}
       {hud?.phase === "COUNTDOWN" && (

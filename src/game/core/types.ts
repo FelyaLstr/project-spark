@@ -29,6 +29,8 @@ export type FighterStats = {
   abilitiesMissed: number;
 };
 
+export type UpgradeKind = "power" | "vitality" | "haste";
+
 export type Fighter = {
   id: string;
   team: Team;
@@ -46,17 +48,23 @@ export type Fighter = {
   invulnFor: number;
   hitFlash: number;
   knockback: Vec;
+  /** match-only resource, reset every match */
   essence: number;
-  upgrades: { power: number; vitality: number; haste: number };
+  /** match-only upgrade LEVELS (0..maxLevel), never baked into base stats */
+  upgrades: Record<UpgradeKind, number>;
   buffs: { overchargeFor: number; guardianPower: number };
   stats: FighterStats;
 };
 
 export type MobKind = "crawler" | "guardian";
 
+export type MobState = "IDLE" | "AGGRO" | "CHASE" | "ATTACK" | "RETURN" | "DEAD";
+
 export type Mob = {
   id: string;
   kind: MobKind;
+  campId: number;
+  state: MobState;
   pos: Vec;
   home: Vec;
   hp: number;
@@ -64,11 +72,24 @@ export type Mob = {
   radius: number;
   target: string | null;
   attackTimer: number;
+  /** short "just noticed you" delay before the chase begins */
+  aggroFor: number;
   telegraphFor: number;
   hitFlash: number;
   alive: boolean;
   respawnIn: number;
 };
+
+export type CampPhase = "PENDING" | "AVAILABLE" | "COMBAT" | "CLEARED" | "RESPAWNING";
+
+export type Camp = {
+  id: number;
+  pos: Vec;
+  radius: number;
+  phase: CampPhase;
+  respawnIn: number;
+};
+
 
 export type ProjectileKind = "basic" | "q";
 
@@ -140,8 +161,13 @@ export type Snapshot = {
   timeLeft: number;
   player: Fighter;
   enemy: Fighter;
+  /** player's spendable essence, floored for display */
+  essence: number;
+  /** player's upgrade levels */
+  upgrades: Record<UpgradeKind, number>;
   core: CoreState;
   safeRadius: number | null;
   winner: Team | null;
   announcement: string | null;
+
 };

@@ -31,11 +31,13 @@ export function render(
   ctx.translate(-cam.x, -cam.y);
 
   drawFloor(ctx);
+  drawCamps(ctx, engine);
   drawCore(ctx, engine);
   drawWalls(ctx);
   drawEffectsUnder(ctx, engine);
   drawAimIndicator(ctx, engine);
   for (const m of engine.mobs) if (m.alive) drawMob(ctx, m);
+
   drawFighter(ctx, engine.enemy, "#fb7185");
   drawFighter(ctx, engine.player, "#38bdf8");
   drawProjectiles(ctx, engine);
@@ -65,6 +67,15 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, engine: GameEngine, fps
     `E pos ${v(e.pos.x, e.pos.y)}  vel ${v(e.vel.x, e.vel.y)} (${Math.hypot(e.vel.x, e.vel.y).toFixed(0)})`,
     `E hp ${e.hp.toFixed(0)}  hit ${e.stats.abilitiesHit}/${e.stats.abilitiesHit + e.stats.abilitiesMissed}  ai ${C.ai.difficulty}`,
     `blocked P:${engine.debugInfo.playerBlocked ? 1 : 0} E:${engine.debugInfo.enemyBlocked ? 1 : 0}`,
+    `P ess ${p.essence.toFixed(0)}  up P${p.upgrades.power}/V${p.upgrades.vitality}/H${p.upgrades.haste}  maxHp ${p.maxHp.toFixed(0)}`,
+    `E ess ${e.essence.toFixed(0)}  up P${e.upgrades.power}/V${e.upgrades.vitality}/H${e.upgrades.haste}`,
+    `mobs ${engine.mobs.filter((m) => m.alive).length}/${engine.mobs.length}  ${engine.camps
+      .map((c) => `#${c.id} ${c.phase}${c.respawnIn > 0 ? ` ${c.respawnIn.toFixed(0)}s` : ""}`)
+      .join("  ")}`,
+    ...engine.mobs
+      .filter((m) => m.alive)
+      .map((m) => `  ${m.id} ${m.state} hp ${m.hp.toFixed(0)}/${m.maxHp} @${v(m.pos.x, m.pos.y)}`),
+
   ];
   ctx.font = "12px ui-monospace, SFMono-Regular, monospace";
   ctx.textAlign = "left";
@@ -112,15 +123,55 @@ function drawFloor(ctx: CanvasRenderingContext2D) {
     ctx.fill();
   }
 
-  if (C.features.neutralMobs) {
-    ctx.strokeStyle = "rgba(163,230,53,0.2)";
+}
+
+/** Subtle camp state indicators: available / in combat / cleared / respawning. */
+function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
+  if (!C.features.neutralMobs) return;
+  const pulse = 0.5 + 0.5 * Math.sin(engine.time * 3);
+  for (const camp of engine.camps) {
+    const style =
+      camp.phase === "COMBAT"
+        ? { stroke: `rgba(251,191,36,${0.35 + pulse * 0.35})`, fill: "rgba(251,191,36,0.05)", dash: [] as number[] }
+        : camp.phase === "AVAILABLE"
+          ? { stroke: "rgba(163,230,53,0.32)", fill: "rgba(163,230,53,0.05)", dash: [] }
+          : camp.phase === "PENDING"
+            ? { stroke: "rgba(148,163,184,0.14)", fill: "rgba(148,163,184,0.02)", dash: [10, 12] }
+            : { stroke: "rgba(148,163,184,0.24)", fill: "rgba(148,163,184,0.03)", dash: [6, 10] };
+
+    ctx.save();
+    ctx.setLineDash(style.dash);
     ctx.lineWidth = 3;
-    for (const camp of C.mobs.camps) {
-      ctx.beginPath();
-      ctx.arc(camp.x, camp.y, 90, 0, Math.PI * 2);
-      ctx.stroke();
+    ctx.strokeStyle = style.stroke;
+    ctx.fillStyle = style.fill;
+    ctx.beginPath();
+    ctx.arc(camp.pos.x, camp.pos.y, camp.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    if (camp.phase === "CLEARED" || camp.phase === "RESPAWNING") {
+      ctx.fillStyle = "rgba(148,163,184,0.7)";
+      ctx.font = "600 15px ui-sans-serif, system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(
+        camp.phase === "CLEARED" ? "CAMP CLEARED" : `RESPAWN ${Math.ceil(camp.respawnIn)}s`,
+        camp.pos.x,
+        camp.pos.y + 5,
+      );
+      // respawn progress arc
+      if (camp.phase === "RESPAWNING") {
+        const t = 1 - camp.respawnIn / C.mobs.respawnSeconds;
+        ctx.strokeStyle = "rgba(163,230,53,0.5)";
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(camp.pos.x, camp.pos.y, camp.radius, -Math.PI / 2, -Math.PI / 2 + t * Math.PI * 2);
+        ctx.stroke();
+      }
     }
+    ctx.restore();
   }
+
 }
 
 function drawWalls(ctx: CanvasRenderingContext2D) {
@@ -276,10 +327,11 @@ function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string) {
 
 function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
   const guardian = m.kind === "guardian";
+  const hostile = m.state === "CHASE" || m.state === "ATTACK" || m.state === "AGGRO";
   ctx.save();
   ctx.translate(m.pos.x, m.pos.y);
-  ctx.shadowColor = guardian ? "#f59e0b" : "#a3e635";
-  ctx.shadowBlur = guardian ? 26 : 12;
+  ctx.shadowColor = guardian ? "#f59e0b" : hostile ? "#facc15" : "#65a30d";
+  ctx.shadowBlur = guardian ? 26 : hostile ? 14 : 8;
   ctx.beginPath();
   if (guardian) {
     ctx.moveTo(0, -m.radius);
@@ -288,13 +340,34 @@ function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
     ctx.lineTo(-m.radius, 0);
     ctx.closePath();
   } else {
-    ctx.arc(0, 0, m.radius, 0, Math.PI * 2);
+    // spiky hexagon — deliberately NOT a smooth circle so it never reads as a player
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
+      const r = i % 2 === 0 ? m.radius : m.radius * 0.72;
+      const fn = i === 0 ? "moveTo" : "lineTo";
+      ctx[fn](Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.closePath();
   }
-  ctx.fillStyle = m.hitFlash > 0 ? "#ffffff" : guardian ? "#f59e0b" : "#65a30d";
+  ctx.fillStyle = m.hitFlash > 0 ? "#ffffff" : guardian ? "#f59e0b" : hostile ? "#a16207" : "#4d7c0f";
   ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = hostile ? "#facc15" : "#84cc16";
+  ctx.stroke();
   ctx.restore();
-  healthBar(ctx, m.pos.x, m.pos.y - m.radius - 14, guardian ? 90 : 44, m.hp / m.maxHp, guardian ? "#f59e0b" : "#a3e635");
+
+  if (!guardian && m.state === "AGGRO") {
+    ctx.save();
+    ctx.fillStyle = "#facc15";
+    ctx.font = "700 16px ui-sans-serif, system-ui, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("!", m.pos.x, m.pos.y - m.radius - 18);
+    ctx.restore();
+  }
+
+  healthBar(ctx, m.pos.x, m.pos.y - m.radius - 14, guardian ? 90 : 36, m.hp / m.maxHp, guardian ? "#f59e0b" : "#a3e635");
 }
+
 
 function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const p of engine.projectiles) {
