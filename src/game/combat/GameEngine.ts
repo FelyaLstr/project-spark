@@ -595,33 +595,38 @@ export class GameEngine {
       return;
     }
     const dmg = Math.max(0, amount);
+    const vsMob = !this.isFighter(target);
+    // mob hits use the same feedback systems, just dialled down
+    const fs = vsMob ? C.mobs.feedbackScale : 1;
     target.hp -= dmg;
     target.hitFlash = F.hitFlashDuration;
-    const heavy = dmg >= C.abilities.q.damage * 0.8;
-    this.hitStop = Math.max(this.hitStop, heavy ? F.hitStopSecondsHeavy : F.hitStopSeconds);
-    this.pushEffect({ kind: "hit", pos: { ...target.pos }, radius: 18, life: 0.18, color: "#fff7c2" });
+    const heavy = !vsMob && dmg >= C.abilities.q.damage * 0.8;
+    this.hitStop = Math.max(this.hitStop, (heavy ? F.hitStopSecondsHeavy : F.hitStopSeconds) * fs);
+    this.pushEffect({
+      kind: "hit",
+      pos: { ...target.pos },
+      radius: 18 * fs,
+      life: 0.18 * fs,
+      color: vsMob ? "#d9f99d" : "#fff7c2",
+    });
     this.pushEffect({
       kind: "impact-ring",
       pos: { ...target.pos },
-      radius: target.radius + (heavy ? 26 : 14),
-      life: heavy ? 0.32 : 0.22,
-      color: heavy ? "#fbbf24" : "#fde68a",
+      radius: target.radius + (heavy ? 26 : 14) * fs,
+      life: (heavy ? 0.32 : 0.22) * fs,
+      color: vsMob ? "#bef264" : heavy ? "#fbbf24" : "#fde68a",
     });
     this.pushEffect({
       kind: "text",
       pos: { x: target.pos.x + (Math.random() - 0.5) * 16, y: target.pos.y },
       text: `${Math.round(dmg)}`,
-      life: C.feedback.damageTextLife,
-      color: this.isFighter(target) && target.team === "A" ? "#fca5a5" : "#fde68a",
+      life: C.feedback.damageTextLife * (vsMob ? 0.75 : 1),
+      color: vsMob ? "#d9f99d" : this.isFighter(target) && target.team === "A" ? "#fca5a5" : "#fde68a",
     });
-
 
     if (source && this.isFighter(source)) {
       source.stats.damageDealt += dmg;
       source.ultCharge = Math.min(R.chargeMax, source.ultCharge + dmg * R.chargePerDamageDealt);
-      const gain = this.isFighter(target) ? dmg * C.essence.perDamageToPlayer : dmg * C.essence.perDamageToMob;
-      source.essence += gain;
-      source.stats.essenceEarned += gain;
     }
     if (this.isFighter(target)) {
       target.stats.damageTaken += dmg;
@@ -635,20 +640,29 @@ export class GameEngine {
         this.onFighterDeath(target);
       } else {
         const mob = target;
-        mob.respawnIn = C.mobs.respawnSeconds;
+        mob.state = "DEAD";
+        mob.target = null;
+        // essence goes to the final blow only
         if (source && this.isFighter(source)) {
           source.stats.mobsKilled += 1;
           const cfg = mob.kind === "crawler" ? C.mobs.crawler : C.mobs.guardian;
-          source.essence += cfg.essence;
-          source.stats.essenceEarned += cfg.essence;
+          this.grantEssence(source, cfg.essence, mob.pos);
           if (mob.kind === "guardian") {
             source.buffs.guardianPower += C.mobs.guardian.abilityPowerBonus;
             this.announce(source.team === "A" ? "YOU SLEW THE GUARDIAN" : "ENEMY SLEW THE GUARDIAN");
           }
         }
-        this.pushEffect({ kind: "hit", pos: { ...mob.pos }, radius: mob.radius * 2, life: 0.4, color: "#f97316" });
+        this.pushEffect({ kind: "hit", pos: { ...mob.pos }, radius: mob.radius * 2, life: 0.4, color: "#84cc16" });
+        this.pushEffect({
+          kind: "impact-ring",
+          pos: { ...mob.pos },
+          radius: mob.radius + 22,
+          life: 0.35,
+          color: "#a3e635",
+        });
       }
     }
+
   }
 
   private onFighterDeath(f: Fighter) {
