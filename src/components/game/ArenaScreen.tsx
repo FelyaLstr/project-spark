@@ -132,9 +132,12 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       const viewW = r.width || 1;
       const viewH = r.height || 1;
       const { zoom, cam } = getCamera(viewW, viewH, engine.player.pos);
-      const worldX = cam.x + (e.clientX - (r.left + viewW / 2)) / zoom;
-      const worldY = cam.y + (e.clientY - (r.top + viewH / 2)) / zoom;
-      input.setAim({ x: worldX - engine.player.pos.x, y: worldY - engine.player.pos.y });
+      // compute player's screen position (player may not be centered when camera is clamped at edges)
+      const playerScreenX = r.left + viewW / 2 + (engine.player.pos.x - cam.x) * zoom;
+      const playerScreenY = r.top + viewH / 2 + (engine.player.pos.y - cam.y) * zoom;
+      const dx = (e.clientX - playerScreenX) / zoom;
+      const dy = (e.clientY - playerScreenY) / zoom;
+      input.setLook({ x: dx, y: dy });
     };
     const md = (e: MouseEvent) => {
       if (e.button === 0) input.queue("basic");
@@ -167,9 +170,20 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   };
   const aimEnd = () => {
     engine.aimPreview = { active: false, ability: null };
+    input.setAbilityAim(null);
   };
   const p = hud?.player;
   const ultReady = p ? p.ultCharge / C.abilities.r.chargeMax : 0;
+
+  // Ensure input state is cleared while player is dead to avoid stuck joystick/aim
+  useEffect(() => {
+    if (!hud) return;
+    if (!hud.player.alive) {
+      input.setMove({ x: 0, y: 0 });
+      input.setAbilityAim(null);
+      input.setLook(null);
+    }
+  }, [hud, input]);
 
 
   return (
@@ -202,6 +216,15 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
           <span className="rounded bg-card/70 px-2 py-1">ULT {Math.floor(ultReady * 100)}%</span>
           {C.features.essenceUpgrades && (
             <span className="rounded bg-cyan-400/15 px-2 py-1 font-bold text-cyan-300">ESSENCE {hud?.essence ?? 0}</span>
+          )}
+          {hud?.phase === "SUDDEN_DEATH" ? (
+            <Chip>Sudden Death</Chip>
+          ) : hud?.core.active ? (
+            <Chip>{hud.core.progressA || hud.core.progressB ? "Capturing" : "Core Active"}</Chip>
+          ) : hud?.core.ownedBy ? (
+            <Chip>Core Secured</Chip>
+          ) : (
+            <Chip>Core Idle</Chip>
           )}
           {p && p.ultActiveFor > 0 && <Chip>OVERDRIVE</Chip>}
         </div>
@@ -267,17 +290,52 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
         </div>
       )}
 
+      {/* Respawn countdowns */}
+      {(hud?.respawnLeft?.A || hud?.respawnLeft?.B) && (
+        <div className="pointer-events-none absolute inset-x-0 top-2/5 text-center">
+          {hud?.respawnLeft?.A > 0 && (
+            <div className="text-sm font-bold text-foreground">Respawn in {Math.ceil(hud.respawnLeft.A)}s</div>
+          )}
+          {hud?.respawnLeft?.B > 0 && (
+            <div className="mt-1 text-sm font-bold text-destructive">Enemy respawns in {Math.ceil(hud.respawnLeft.B)}s</div>
+          )}
+        </div>
+      )}
+
       {/* Bottom controls */}
       <div className="absolute inset-x-0 bottom-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         {isPortrait ? (
           <div className="flex items-end justify-between gap-3">
+            {/* Left: movement joystick */}
             <Joystick
               onChange={(v) => {
                 input.setMove(v);
-                input.setAim(v);
+              }}
+              onEnd={(last) => {
+                if (last) input.setLastLook(last);
+                input.setMove({ x: 0, y: 0 });
+                input.setLook(null);
               }}
             />
+
+            {/* Center/right: aim joystick + ability buttons */}
             <div className="flex items-end gap-3">
+              {/* Right: aim joystick (auto-fire like Brawl Stars) */}
+              <div className="flex flex-col items-center gap-3">
+                <Joystick
+                  onChange={(v) => {
+                    // set look and enable auto-fire while aiming
+                    input.setLook(v);
+                    input.setAutoFire(true);
+                  }}
+                  onEnd={(last) => {
+                    input.setAutoFire(false);
+                    if (last) input.setLastLook(last);
+                    input.setLook(null);
+                  }}
+                />
+              </div>
+
               <div className="flex flex-col items-center gap-3">
                 <AbilityButton
                   label="R"
@@ -295,8 +353,6 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
                   maxCooldown={C.abilities.w.cooldown}
                   onCast={cast}
                 />
-              </div>
-              <div className="flex flex-col items-center gap-3">
                 <AbilityButton
                   label="Q"
                   ability="q"
@@ -334,7 +390,7 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
                   ability="w"
                   cooldown={p?.cooldowns.w ?? 0}
                   maxCooldown={C.abilities.w.cooldown}
-                  onAim={(v) => input.setAim(v)}
+                  onAim={(v) => input.setAbilityAim(v)}
                   onAimStart={aimStart}
                   onAimEnd={aimEnd}
                   onCast={cast}
@@ -346,7 +402,7 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
                   ability="q"
                   cooldown={p?.cooldowns.q ?? 0}
                   maxCooldown={C.abilities.q.cooldown}
-                  onAim={(v) => input.setAim(v)}
+                  onAim={(v) => input.setAbilityAim(v)}
                   onAimStart={aimStart}
                   onAimEnd={aimEnd}
                   onCast={cast}
@@ -357,7 +413,7 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
                   big
                   cooldown={p?.cooldowns.basic ?? 0}
                   maxCooldown={C.vanguard.attackCooldown}
-                  onAim={(v) => input.setAim(v)}
+                  onAim={(v) => input.setAbilityAim(v)}
                   onAimStart={aimStart}
                   onAimEnd={aimEnd}
                   onCast={cast}
