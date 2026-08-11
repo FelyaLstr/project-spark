@@ -26,6 +26,8 @@ export function render(
   ctx.fillStyle = "#07080f";
   ctx.fillRect(0, 0, viewW, viewH);
 
+  drawScreenEffects(ctx, engine, viewW, viewH);
+
   ctx.translate(viewW / 2, viewH / 2);
   ctx.scale(zoom, zoom);
   ctx.translate(-cam.x, -cam.y);
@@ -435,6 +437,17 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
 }
 
 
+function drawScreenEffects(ctx: CanvasRenderingContext2D, engine: GameEngine, viewW: number, viewH: number) {
+  for (const e of engine.effects) {
+    if (e.kind !== "screen-flash") continue;
+    const t = e.life / e.maxLife;
+    ctx.save();
+    ctx.fillStyle = `${e.color ?? "#fda4af"}${Math.round(t * 80).toString(16).padStart(2, "0")}`;
+    ctx.fillRect(0, 0, viewW, viewH);
+    ctx.restore();
+  }
+}
+
 function drawEffectsUnder(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const e of engine.effects) {
     const t = e.life / e.maxLife;
@@ -511,6 +524,15 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
+    if (e.kind === "death-burst") {
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 30) * (0.55 + (1 - t) * 0.9), 0, Math.PI * 2);
+      ctx.strokeStyle = e.color ?? "#f87171";
+      ctx.globalAlpha = t;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
     if (e.kind === "impact-ring") {
       const grow = 1 - t;
       ctx.beginPath();
@@ -545,7 +567,8 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     }
     if (e.kind === "text" && e.text) {
       const dodge = e.text === "DODGE";
-      ctx.font = dodge ? "bold 20px ui-sans-serif, system-ui" : "bold 24px ui-sans-serif, system-ui";
+      const numeric = /^\d+$/.test(e.text);
+      ctx.font = dodge ? "bold 20px ui-sans-serif, system-ui" : numeric ? "bold 28px ui-sans-serif, system-ui" : "bold 24px ui-sans-serif, system-ui";
       ctx.textAlign = "center";
       ctx.globalAlpha = Math.min(1, t * 1.6);
       ctx.lineWidth = 4;
@@ -553,7 +576,10 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       const y = e.pos.y - 40 - (1 - t) * 34;
       ctx.strokeText(e.text, e.pos.x, y);
       ctx.fillStyle = e.color ?? "#fff";
+      ctx.shadowColor = "rgba(15,23,42,0.4)";
+      ctx.shadowBlur = 8;
       ctx.fillText(e.text, e.pos.x, y);
+      ctx.shadowBlur = 0;
       ctx.globalAlpha = 1;
     }
 

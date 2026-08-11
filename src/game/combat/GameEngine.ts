@@ -101,6 +101,8 @@ export class GameEngine {
   private freeze = 0;
   /** real-time remaining of the current hit pause */
   hitStop = 0;
+  /** respawn countdowns in seconds for each team (0 = not waiting) */
+  respawnLeft: Record<Team, number> = { A: 0, B: 0 };
   private dodgeTextCd: Record<string, number> = {};
   /** last frame's collision state, for the debug overlay */
   debugInfo = { playerBlocked: false, enemyBlocked: false, fighterContact: false };
@@ -132,6 +134,7 @@ export class GameEngine {
     this.coreWave = 0;
     this.freeze = 0;
     this.hitStop = 0;
+    this.respawnLeft = { A: 0, B: 0 };
     this.dodgeTextCd = {};
     this.ai = createAIController(C.ai.difficulty);
   }
@@ -213,10 +216,10 @@ export class GameEngine {
     let dt = Math.min(rawDt, 0.05);
     if (this.phase === "RESULTS") return;
 
-    // hit stop: scale simulation time for a few tens of milliseconds
+    // hit stop: visual feedback timer only. Do NOT scale simulation dt.
     if (this.hitStop > 0) {
       this.hitStop = Math.max(0, this.hitStop - dt);
-      dt *= C.feedback.hitStopScale;
+      // keep hitStop as a read-only timer for renderer/effects, but avoid changing dt
     }
 
     if (playerCmd.aim.x || playerCmd.aim.y) this.aimDir = norm(playerCmd.aim);
@@ -245,6 +248,16 @@ export class GameEngine {
       this.updateEffects(dt);
       if (this.freeze <= 0) this.phase = "RESULTS";
       return;
+    }
+
+    // respawn timers
+    for (const t of ["A", "B"] as Team[]) {
+      if (this.respawnLeft[t] > 0) {
+        this.respawnLeft[t] = Math.max(0, this.respawnLeft[t] - dt);
+        if (this.respawnLeft[t] === 0) {
+          this.respawnFighter(t);
+        }
+      }
     }
 
     this.time += dt;
@@ -329,6 +342,8 @@ export class GameEngine {
     this.core = { active: true, progressA: 0, progressB: 0, ownedBy: null };
     if (this.phase === "PLAYING") this.phase = "CORE_EVENT";
     this.announce("THE CORE IS ACTIVE");
+    this.pushEffect({ kind: "text", pos: { x: this.corePos.x, y: this.corePos.y - 70 }, text: "CORE ONLINE", life: 1, color: "#38bdf8" });
+    this.pushEffect({ kind: "core-ring", pos: { ...this.corePos }, radius: C.arena.coreRadius, life: 0.9, color: "#38bdf8" });
   }
 
   // ---------- fighters ----------
@@ -364,8 +379,8 @@ export class GameEngine {
     f.hitFlash = Math.max(0, f.hitFlash - dt);
     f.buffs.overchargeFor = Math.max(0, f.buffs.overchargeFor - dt);
 
-    const aim = norm(cmd.aim);
-    if (aim.x || aim.y) f.facing = Math.atan2(aim.y, aim.x);
+    const lookAim = norm(cmd.aim);
+    if (lookAim.x || lookAim.y) f.facing = Math.atan2(lookAim.y, lookAim.x);
 
     // --- movement with acceleration / deceleration ---
     let move = cmd.move;
@@ -406,7 +421,8 @@ export class GameEngine {
     f.pos = resolved;
 
 
-    if (cmd.cast) this.tryCast(f, cmd.cast, aim);
+    const castAim = norm(cmd.castAim ?? cmd.aim);
+    if (cmd.cast) this.tryCast(f, cmd.cast, castAim);
   }
 
   /** Player vs player collision — simple circle separation. */
@@ -494,6 +510,7 @@ export class GameEngine {
         life: q.qTelegraphDuration,
         color: f.team === "A" ? "#a78bfa" : "#fb923c",
       });
+      this.pushEffect({ kind: "text", pos: { x: f.pos.x, y: f.pos.y - 24 }, text: "Q", life: 0.45, color: "#c4b5fd" });
       const damage = q.damage * this.damageMult(f);
       this.later(q.qTelegraphDuration, () => {
         if (!f.alive) return;
@@ -517,6 +534,7 @@ export class GameEngine {
       f.vel = scale(dir, w.distance / w.duration);
       f.knockback = { x: 0, y: 0 };
       this.pushEffect({ kind: "dodge-ring", pos: { ...f.pos }, radius: 44, life: 0.28, color: "#a5f3fc" });
+      this.pushEffect({ kind: "text", pos: { x: f.pos.x, y: f.pos.y - 24 }, text: "DASH", life: 0.45, color: "#67e8f9" });
       return;
     }
 
@@ -545,6 +563,7 @@ export class GameEngine {
       f.ultActiveFor = C.abilities.r.duration;
       this.pushEffect({ kind: "hit", pos: { ...f.pos }, radius: 130, life: 0.7, color: "#fbbf24" });
       this.pushEffect({ kind: "shockwave", pos: { ...f.pos }, radius: 110, life: 0.5, color: "#fbbf24" });
+      this.pushEffect({ kind: "screen-flash", pos: { x: 0, y: 0 }, radius: 1, life: 0.18, color: "#fde68a" });
       this.pushEffect({ kind: "text", pos: { ...f.pos }, text: "OVERDRIVE", life: 1.4, color: "#fbbf24" });
       this.announce(f.team === "A" ? "OVERDRIVE" : "ENEMY OVERDRIVE");
     }
@@ -589,12 +608,16 @@ export class GameEngine {
     }
     const dmg = Math.max(0, amount);
     const vsMob = !this.isFighter(target);
+    const isPlayer = this.isFighter(target) && target.team === "A";
     // mob hits use the same feedback systems, just dialled down
     const fs = vsMob ? C.mobs.feedbackScale : 1;
     target.hp -= dmg;
     target.hitFlash = F.hitFlashDuration;
     const heavy = !vsMob && dmg >= C.abilities.q.damage * 0.8;
     this.hitStop = Math.max(this.hitStop, (heavy ? F.hitStopSecondsHeavy : F.hitStopSeconds) * fs);
+    if (isPlayer) {
+      this.pushEffect({ kind: "screen-flash", pos: { x: 0, y: 0 }, radius: 1, life: 0.16, color: "#fda4af" });
+    }
     this.pushEffect({
       kind: "hit",
       pos: { ...target.pos },
@@ -611,10 +634,10 @@ export class GameEngine {
     });
     this.pushEffect({
       kind: "text",
-      pos: { x: target.pos.x + (Math.random() - 0.5) * 16, y: target.pos.y },
+      pos: { x: target.pos.x + (Math.random() - 0.5) * 16, y: target.pos.y - 8 },
       text: `${Math.round(dmg)}`,
       life: C.feedback.damageTextLife * (vsMob ? 0.75 : 1),
-      color: vsMob ? "#d9f99d" : this.isFighter(target) && target.team === "A" ? "#fca5a5" : "#fde68a",
+      color: vsMob ? "#d9f99d" : this.isFighter(target) && target.team === "A" ? "#fca5a5" : heavy ? "#fef3c7" : "#fde68a",
     });
 
     if (source && this.isFighter(source)) {
@@ -653,20 +676,50 @@ export class GameEngine {
           life: 0.35,
           color: "#a3e635",
         });
+        this.pushEffect({ kind: "death-burst", pos: { ...mob.pos }, radius: mob.radius + 24, life: 0.4, color: "#84cc16" });
       }
     }
 
   }
 
   private onFighterDeath(f: Fighter) {
-    this.winner = f.team === "A" ? "B" : "A";
-    this.phase = "PLAYER_DEAD";
+    // mark dead, play reaction, then schedule a respawn rather than ending the match immediately
     this.freeze = C.match.freezeOnDeath;
     this.hitStop = Math.max(this.hitStop, 0.09);
     f.vel = { x: 0, y: 0 };
     this.pushEffect({ kind: "hit", pos: { ...f.pos }, radius: 110, life: 1.2, color: "#ef4444" });
     this.pushEffect({ kind: "shockwave", pos: { ...f.pos }, radius: 90, life: 0.6, color: "#ef4444" });
     this.pushEffect({ kind: "impact-ring", pos: { ...f.pos }, radius: 150, life: 0.9, color: "#f87171" });
+    this.pushEffect({ kind: "death-burst", pos: { ...f.pos }, radius: 120, life: 0.6, color: "#f87171" });
+    this.pushEffect({ kind: "text", pos: { x: f.pos.x, y: f.pos.y - 24 }, text: f.team === "A" ? "K.O." : "DOWN", life: 0.7, color: "#fda4af" });
+
+    // HUD announcements: show kill / death briefly
+    if (f.team === "B") {
+      this.announce("YOU KILLED THE ENEMY");
+    } else {
+      this.announce("YOU DIED");
+    }
+
+    // schedule respawn
+    this.respawnLeft[f.team] = C.match.respawnSeconds;
+  }
+
+  private respawnFighter(team: Team) {
+    const f = team === "A" ? this.player : this.enemy;
+    // reset basic combat state
+    f.alive = true;
+    f.hp = f.maxHp;
+    f.pos = team === "A" ? { ...C.arena.spawnA } : { ...C.arena.spawnB };
+    f.vel = { x: 0, y: 0 };
+    f.cooldowns = { basic: 0, q: 0, w: 0, e: 0, r: 0 };
+    f.ultActiveFor = 0;
+    f.dashFor = 0;
+    f.invulnFor = 0.35; // small spawn grace
+    f.hitFlash = 0;
+    f.knockback = { x: 0, y: 0 };
+    f.buffs = { overchargeFor: 0, guardianPower: 0 };
+    this.pushEffect({ kind: "text", pos: { ...f.pos }, text: "RESPAWN", life: 1.0, color: "#7dd3fc" });
+    this.pushEffect({ kind: "core-ring", pos: { ...f.pos }, radius: f.radius + 18, life: 0.6, color: team === "A" ? "#38bdf8" : "#fb7185" });
   }
 
 
@@ -770,7 +823,9 @@ export class GameEngine {
       this.core = { active: false, progressA: 0, progressB: 0, ownedBy: f.team };
       if (this.phase === "CORE_EVENT") this.phase = "PLAYING";
       this.announce(f.team === "A" ? "YOU CAPTURED THE CORE" : "ENEMY CAPTURED THE CORE");
+      this.pushEffect({ kind: "screen-flash", pos: { x: 0, y: 0 }, radius: 1, life: 0.22, color: "#38bdf8" });
       this.pushEffect({ kind: "core-ring", pos: { ...this.corePos }, radius: C.arena.coreRadius, life: 0.9, color: "#38bdf8" });
+      this.pushEffect({ kind: "text", pos: { x: this.corePos.x, y: this.corePos.y - 70 }, text: "CORE CAPTURED", life: 1.1, color: "#38bdf8" });
     };
     if (this.core.progressA >= C.core.captureSeconds) capture(this.player);
     else if (this.core.progressB >= C.core.captureSeconds) capture(this.enemy);
@@ -785,6 +840,8 @@ export class GameEngine {
       this.phase = "SUDDEN_DEATH";
       this.safeRadius = Math.min(C.arena.width, C.arena.height) / 2;
       this.announce("CORE OVERLOAD");
+      this.pushEffect({ kind: "screen-flash", pos: { x: 0, y: 0 }, radius: 1, life: 0.24, color: "#f87171" });
+      this.pushEffect({ kind: "text", pos: { x: this.corePos.x, y: this.corePos.y - 70 }, text: "SUDDEN DEATH", life: 1.1, color: "#f87171" });
     }
     this.safeRadius = Math.max(
       C.match.minSafeRadius,
@@ -823,6 +880,7 @@ export class GameEngine {
       safeRadius: this.safeRadius,
       winner: this.winner,
       announcement: this.announcement,
+      respawnLeft: { ...this.respawnLeft },
     };
   }
 }

@@ -7,6 +7,8 @@ export type InputCommand = {
   move: Vec;
   /** aim direction (normalized) */
   aim: Vec;
+  /** optional aim vector specifically supplied for casts (from ability UI). This should not affect facing. */
+  castAim?: Vec | null;
   /** ability requested this frame */
   cast: AbilityKey | null;
 };
@@ -126,7 +128,9 @@ export type Effect = {
     | "text"
     | "core-ring"
     | "dash-trail"
-    | "muzzle";
+    | "muzzle"
+    | "screen-flash"
+    | "death-burst";
   pos: Vec;
   dir?: Vec;
   radius?: number;
@@ -169,5 +173,7 @@ export type Snapshot = {
   safeRadius: number | null;
   winner: Team | null;
   announcement: string | null;
+  /** remaining respawn seconds for each team (0 == alive) */
+  respawnLeft?: Record<Team, number>;
 
 };
