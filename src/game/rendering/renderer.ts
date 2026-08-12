@@ -30,7 +30,7 @@ export function render(
   ctx.scale(zoom, zoom);
   ctx.translate(-cam.x, -cam.y);
 
-  drawFloor(ctx);
+  drawFloor(ctx, engine.time);
   drawCamps(ctx, engine);
   drawCore(ctx, engine);
   drawWalls(ctx);
