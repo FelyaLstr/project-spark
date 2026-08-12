@@ -61,6 +61,16 @@ const ChartContainer = React.forwardRef<
 });
 ChartContainer.displayName = "Chart";
 
+// The generated <style> block is injected as raw CSS, so only accept simple color
+// tokens — anything else could close the declaration and inject arbitrary rules.
+const SAFE_COLOR = /^[\w#(),.%\-/ ]+$/;
+
+function safeColor(color: string | undefined): string | null {
+  if (!color) return null;
+  const trimmed = color.trim();
+  return SAFE_COLOR.test(trimmed) ? trimmed : null;
+}
+
 const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   const colorConfig = Object.entries(config).filter(([, config]) => config.theme || config.color);
 
@@ -77,8 +87,11 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
 ${prefix} [data-chart=${id}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
-    const color = itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color;
-    return color ? `  --color-${key}: ${color};` : null;
+    const color = safeColor(
+      itemConfig.theme?.[theme as keyof typeof itemConfig.theme] || itemConfig.color,
+    );
+    const safeKey = key.replace(/[^\w-]/g, "");
+    return color && safeKey ? `  --color-${safeKey}: ${color};` : null;
   })
   .join("\n")}
 }

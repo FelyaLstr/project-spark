@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useCallback, useEffect, useState } from "react";
+import { z } from "zod";
 import { ArenaScreen, type MatchResult } from "@/components/game/ArenaScreen";
 import { matchService } from "@/services/matchService";
 import { initTelegram } from "@/services/telegram";
@@ -27,17 +28,53 @@ export const Route = createFileRoute("/")({
 
 type Screen = "MENU" | "MATCHMAKING" | "ARENA" | "RESULTS";
 
-type Profile = { name: string; rating: number; wins: number; losses: number; streak: number };
+const PROFILE_STORAGE_KEY = "va_profile";
+const MAX_NAME_LENGTH = 32;
 
+const counter = z.number().int().min(0).max(1_000_000);
+
+const profileSchema = z.object({
+  name: z
+    .string()
+    // Control characters would let a stored name break out of the rendered label.
+    .transform((n) =>
+      n
+        .replace(/[\p{C}]/gu, " ")
+        .trim()
+        .slice(0, MAX_NAME_LENGTH),
+    )
+    .refine((n) => n.length > 0),
+  rating: z.number().int().min(0).max(100_000),
+  wins: counter,
+  losses: counter,
+  streak: counter,
+});
+
+type Profile = z.infer<typeof profileSchema>;
+
+const defaultProfile = (): Profile => ({
+  name: "Vanguard",
+  rating: 1000,
+  wins: 0,
+  losses: 0,
+  streak: 0,
+});
+
+// localStorage is fully attacker/user controlled, so the stored blob is parsed
+// defensively: anything unexpected falls back to a fresh profile.
 const loadProfile = (): Profile => {
-  if (typeof window === "undefined") return { name: "Vanguard", rating: 1000, wins: 0, losses: 0, streak: 0 };
+  if (typeof window === "undefined") return defaultProfile();
   try {
-    const raw = localStorage.getItem("va_profile");
-    if (raw) return JSON.parse(raw) as Profile;
+    const raw = localStorage.getItem(PROFILE_STORAGE_KEY);
+    if (raw) {
+      const parsed = profileSchema.safeParse(JSON.parse(raw));
+      if (parsed.success) return parsed.data;
+      localStorage.removeItem(PROFILE_STORAGE_KEY);
+    }
   } catch {
     /* ignore */
   }
-  return { name: "Vanguard", rating: 1000, wins: 0, losses: 0, streak: 0 };
+  return defaultProfile();
 };
 
 function App() {
@@ -49,11 +86,12 @@ function App() {
 
   useEffect(() => {
     const tg = initTelegram();
-    if (tg.isTelegram) setProfile((p) => ({ ...p, name: tg.name }));
+    if (tg.isTelegram) setProfile((p) => ({ ...p, name: tg.name || p.name }));
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") localStorage.setItem("va_profile", JSON.stringify(profile));
+    if (typeof window !== "undefined")
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
   }, [profile]);
 
   const startSearch = useCallback(async () => {
@@ -74,7 +112,7 @@ function App() {
     setResult(r);
     setProfile((p) => ({
       ...p,
-      rating: p.rating + (r.won ? 18 : -12),
+      rating: Math.max(0, p.rating + (r.won ? 18 : -12)),
       wins: p.wins + (r.won ? 1 : 0),
       losses: p.losses + (r.won ? 0 : 1),
       streak: r.won ? p.streak + 1 : 0,
@@ -115,7 +153,7 @@ function Menu({ profile, onPlay, onPractice }: { profile: Profile; onPlay: () =>
       <section className="mt-8 rounded-2xl border border-border/60 bg-card/60 p-4 backdrop-blur">
         <div className="flex items-center gap-4">
           <div className="grid size-16 place-items-center rounded-xl border border-primary/40 bg-primary/15 text-2xl font-black text-primary">
-            {profile.name.slice(0, 1).toUpperCase()}
+            {(profile.name.slice(0, 1) || "V").toUpperCase()}
           </div>
           <div className="min-w-0">
             <div className="truncate text-lg font-bold">{profile.name}</div>
