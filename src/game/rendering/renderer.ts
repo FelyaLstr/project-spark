@@ -378,11 +378,22 @@ function drawAimIndicator(ctx: CanvasRenderingContext2D, engine: GameEngine) {
 }
 
 function healthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, ratio: number, color: string) {
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
-  ctx.fillRect(x - w / 2, y, w, 6);
+  const h = 6;
+  ctx.save();
+  ctx.fillStyle = "rgba(3,6,14,0.8)";
+  ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = "rgba(148,163,184,0.18)";
+  ctx.fillRect(x - w / 2, y, w, h);
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
   ctx.fillStyle = color;
-  ctx.fillRect(x - w / 2, y, w * Math.max(0, ratio), 6);
+  ctx.fillRect(x - w / 2, y, w * Math.max(0, ratio), h);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fillRect(x - w / 2, y, w * Math.max(0, ratio), 2);
+  ctx.restore();
 }
+
 
 function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string) {
   if (!f.alive) return;
