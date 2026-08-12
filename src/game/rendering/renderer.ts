@@ -87,43 +87,129 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, engine: GameEngine, fps
 }
 
 
-function drawFloor(ctx: CanvasRenderingContext2D) {
-  const g = ctx.createRadialGradient(C.arena.width / 2, C.arena.height / 2, 100, C.arena.width / 2, C.arena.height / 2, 1000);
-  g.addColorStop(0, "#131a2c");
-  g.addColorStop(1, "#0a0c16");
+function drawFloor(ctx: CanvasRenderingContext2D, time: number) {
+  const W = C.arena.width;
+  const H = C.arena.height;
+  const cx = W / 2;
+  const cy = H / 2;
+
+  const g = ctx.createRadialGradient(cx, cy, 80, cx, cy, Math.max(W, H) * 0.75);
+  g.addColorStop(0, "#151a30");
+  g.addColorStop(0.55, "#0c0f1e");
+  g.addColorStop(1, "#05060d");
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, C.arena.width, C.arena.height);
+  ctx.fillRect(0, 0, W, H);
 
-  ctx.strokeStyle = "rgba(56,189,248,0.06)";
-  ctx.lineWidth = 2;
-  for (let x = 0; x <= C.arena.width; x += 80) {
-    ctx.beginPath();
+  // fine weave texture — two offset grids read as dark stone tiling
+  ctx.save();
+  ctx.strokeStyle = "rgba(125,211,252,0.035)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x <= W; x += 40) {
     ctx.moveTo(x, 0);
-    ctx.lineTo(x, C.arena.height);
-    ctx.stroke();
+    ctx.lineTo(x, H);
   }
-  for (let y = 0; y <= C.arena.height; y += 80) {
-    ctx.beginPath();
+  for (let y = 0; y <= H; y += 40) {
     ctx.moveTo(0, y);
-    ctx.lineTo(C.arena.width, y);
+    ctx.lineTo(W, y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(139,92,246,0.06)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = 0; x <= W; x += 160) {
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+  }
+  for (let y = 0; y <= H; y += 160) {
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // central magic composition: slow counter-rotating rune rings
+  ctx.save();
+  ctx.translate(cx, cy);
+  const breathe = 0.5 + 0.5 * Math.sin(time * 0.7);
+  ctx.strokeStyle = `rgba(139,92,246,${0.1 + breathe * 0.06})`;
+  ctx.lineWidth = 2;
+  for (const r of [230, 340, 470]) {
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.stroke();
   }
-  ctx.strokeStyle = "rgba(125,211,252,0.35)";
-  ctx.lineWidth = 6;
-  ctx.strokeRect(0, 0, C.arena.width, C.arena.height);
-
-  // spawn pads
-  for (const [pad, color] of [
-    [C.arena.spawnA, "rgba(56,189,248,0.18)"],
-    [C.arena.spawnB, "rgba(251,113,133,0.18)"],
-  ] as const) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(pad.x, pad.y, 70, 0, Math.PI * 2);
-    ctx.fill();
+  ctx.rotate(time * 0.05);
+  ctx.strokeStyle = `rgba(56,189,248,${0.12 + breathe * 0.08})`;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([28, 46]);
+  ctx.beginPath();
+  ctx.arc(0, 0, 300, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.rotate(-time * 0.09);
+  ctx.strokeStyle = "rgba(139,92,246,0.16)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const fn = i === 0 ? "moveTo" : "lineTo";
+    ctx[fn](Math.cos(a) * 400, Math.sin(a) * 400);
   }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
 
+  // boundary: inner falloff + double neon edge
+  ctx.save();
+  const edge = ctx.createLinearGradient(0, 0, 0, 120);
+  edge.addColorStop(0, "rgba(56,189,248,0.10)");
+  edge.addColorStop(1, "rgba(56,189,248,0)");
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, W, 120);
+  ctx.save();
+  ctx.translate(0, H);
+  ctx.scale(1, -1);
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, W, 120);
+  ctx.restore();
+  ctx.shadowColor = "rgba(56,189,248,0.8)";
+  ctx.shadowBlur = 26;
+  ctx.strokeStyle = "rgba(125,211,252,0.55)";
+  ctx.lineWidth = 5;
+  ctx.strokeRect(0, 0, W, H);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(139,92,246,0.35)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(14, 14, W - 28, H - 28);
+  ctx.restore();
+
+  // spawn pads — glowing sigils
+  for (const [pad, hue] of [
+    [C.arena.spawnA, "56,189,248"],
+    [C.arena.spawnB, "251,113,133"],
+  ] as const) {
+    ctx.save();
+    ctx.translate(pad.x, pad.y);
+    const pg = ctx.createRadialGradient(0, 0, 6, 0, 0, 78);
+    pg.addColorStop(0, `rgba(${hue},0.22)`);
+    pg.addColorStop(1, `rgba(${hue},0)`);
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.arc(0, 0, 78, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.rotate(time * 0.25);
+    ctx.strokeStyle = `rgba(${hue},0.4)`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([14, 18]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 56, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
+
 
 /** Subtle camp state indicators: available / in combat / cleared / respawning. */
 function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
