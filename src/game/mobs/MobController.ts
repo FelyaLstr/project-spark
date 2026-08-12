@@ -23,8 +23,6 @@ const cfgOf = (m: Mob) => (m.kind === "crawler" ? C.mobs.crawler : C.mobs.guardi
  * State machine: IDLE -> AGGRO -> CHASE -> ATTACK -> RETURN -> IDLE (or DEAD).
  */
 export function updateMobs(ctx: MobContext, dt: number) {
-  updateCamps(ctx, dt);
-
   for (const m of ctx.mobs) {
     m.hitFlash = Math.max(0, m.hitFlash - dt);
     if (!m.alive) continue;
@@ -56,11 +54,16 @@ export function updateMobs(ctx: MobContext, dt: number) {
 
     if (m.state === "RETURN") {
       const d = dist(m.pos, m.home);
-      if (d < 6) {
-        m.state = "IDLE";
-        m.hp = m.maxHp; // reset like a normal neutral camp
+      // the arrival window has to cover one step, or a large dt overshoots home forever
+      if (d <= Math.max(6, cfg.returnSpeed * dt)) {
+        arriveHome(m);
       } else {
+        const before = m.pos;
         step(ctx, m, m.home, cfg.returnSpeed, dt);
+        const progress = dist(before, m.pos);
+        m.returnStuckFor = progress < cfg.returnSpeed * dt * 0.25 ? m.returnStuckFor + dt : 0;
+        // walls have no pathfinding around them: give up rather than leash forever
+        if (m.returnStuckFor >= C.mobs.returnGiveUpSeconds) arriveHome(m);
       }
       continue;
     }
@@ -91,8 +94,15 @@ export function updateMobs(ctx: MobContext, dt: number) {
     if (m.kind === "guardian") {
       m.telegraphFor = C.mobs.guardian.telegraph;
       const pos = { ...m.pos };
-      ctx.pushEffect({ kind: "shockwave", pos, radius: 120, life: C.mobs.guardian.telegraph, color: "#f59e0b" });
+      ctx.pushEffect({
+        kind: "shockwave",
+        pos,
+        radius: 120,
+        life: C.mobs.guardian.telegraph,
+        color: "#f59e0b",
+      });
       ctx.later(C.mobs.guardian.telegraph, () => {
+        if (!m.alive) return;
         for (const f of ctx.fighters) {
           if (f.alive && dist(pos, f.pos) < 120 + f.radius) ctx.applyDamage(m, f, cfg.damage);
         }
@@ -109,6 +119,9 @@ export function updateMobs(ctx: MobContext, dt: number) {
       ctx.applyDamage(m, target, cfg.damage);
     }
   }
+
+  // after the mobs have moved and died, so the camp phase always describes this tick
+  updateCamps(ctx, dt);
 }
 
 /** Camp phase bookkeeping + whole-camp respawn. */
@@ -118,14 +131,22 @@ function updateCamps(ctx: MobContext, dt: number) {
     const alive = campMobs.some((m) => m.alive);
 
     if (camp.phase === "PENDING") {
-      const activated = ctx.fighters.some((f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campActivationRadius);
+      const activated = ctx.fighters.some(
+        (f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campActivationRadius,
+      );
       if (!activated) continue;
 
       camp.phase = "AVAILABLE";
       camp.respawnIn = 0;
       if (!campMobs.length) {
         ctx.mobs.push(...spawnCampMobs(camp));
-        ctx.pushEffect({ kind: "core-ring", pos: { ...camp.pos }, radius: camp.radius, life: 0.7, color: "#a3e635" });
+        ctx.pushEffect({
+          kind: "core-ring",
+          pos: { ...camp.pos },
+          radius: camp.radius,
+          life: 0.7,
+          color: "#a3e635",
+        });
       }
       continue;
     }
@@ -134,10 +155,17 @@ function updateCamps(ctx: MobContext, dt: number) {
       camp.respawnIn = Math.max(0, camp.respawnIn - dt);
       camp.phase = camp.respawnIn > C.mobs.respawnSeconds - 2 ? "CLEARED" : "RESPAWNING";
       if (camp.respawnIn <= 0) {
-        for (let i = ctx.mobs.length - 1; i >= 0; i--) if (ctx.mobs[i]!.campId === camp.id) ctx.mobs.splice(i, 1);
+        for (let i = ctx.mobs.length - 1; i >= 0; i--)
+          if (ctx.mobs[i]!.campId === camp.id) ctx.mobs.splice(i, 1);
         ctx.mobs.push(...spawnCampMobs(camp));
         camp.phase = "AVAILABLE";
-        ctx.pushEffect({ kind: "core-ring", pos: { ...camp.pos }, radius: camp.radius, life: 0.7, color: "#a3e635" });
+        ctx.pushEffect({
+          kind: "core-ring",
+          pos: { ...camp.pos },
+          radius: camp.radius,
+          life: 0.7,
+          color: "#a3e635",
+        });
       }
       continue;
     }
@@ -148,10 +176,21 @@ function updateCamps(ctx: MobContext, dt: number) {
       continue;
     }
 
-    const contested = ctx.fighters.some((f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campCombatRadius);
+    const contested = ctx.fighters.some(
+      (f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campCombatRadius,
+    );
     const fighting = campMobs.some((m) => m.alive && (m.state === "CHASE" || m.state === "ATTACK"));
     camp.phase = contested || fighting ? "COMBAT" : "AVAILABLE";
   }
+}
+
+/** Back at the camp: drop the aggro memory and heal like an untouched neutral. */
+function arriveHome(m: Mob) {
+  m.state = "IDLE";
+  m.hp = m.maxHp;
+  m.target = null;
+  m.attackTimer = 0;
+  m.returnStuckFor = 0;
 }
 
 function nearest(fs: Fighter[], p: Vec): Fighter | null {

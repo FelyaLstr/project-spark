@@ -223,6 +223,8 @@ export const GAME_CONFIG = {
     crawlersPerCamp: 3,
     /** the whole camp respawns together this long after the last crawler dies */
     respawnSeconds: 25,
+    /** a wall-blocked walk home is abandoned after this long so a camp can never stay leashed */
+    returnGiveUpSeconds: 1.5,
     /** mob hit feedback is dialled down vs. player-on-player hits */
     feedbackScale: 0.6,
   },
@@ -260,7 +262,6 @@ export const GAME_CONFIG = {
     /** short death reaction before the results screen is allowed */
     deathReactionSeconds: 0.55,
   },
-
 } as const;
 
 export type GameConfig = typeof GAME_CONFIG;
