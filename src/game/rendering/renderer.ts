@@ -270,17 +270,37 @@ function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
 }
 
 function drawWalls(ctx: CanvasRenderingContext2D) {
+  // Purely cosmetic: identical rect geometry, richer shading. Collision untouched.
   for (const w of C.arena.walls) {
-    ctx.fillStyle = "#232d45";
+    ctx.save();
+    // grounded shadow
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(w.x + 4, w.y + 6, w.w, w.h);
+
+    const g = ctx.createLinearGradient(w.x, w.y, w.x, w.y + w.h);
+    g.addColorStop(0, "#2a3555");
+    g.addColorStop(0.35, "#1c2440");
+    g.addColorStop(1, "#111726");
+    ctx.fillStyle = g;
     ctx.fillRect(w.x, w.y, w.w, w.h);
-    // readable top edge highlight
-    ctx.fillStyle = "rgba(125,211,252,0.15)";
-    ctx.fillRect(w.x, w.y, w.w, 5);
-    ctx.strokeStyle = "rgba(125,211,252,0.5)";
+
+    // engraved inner line
+    ctx.strokeStyle = "rgba(139,92,246,0.25)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(w.x + 6, w.y + 6, Math.max(0, w.w - 12), Math.max(0, w.h - 12));
+
+    // neon crest
+    ctx.fillStyle = "rgba(125,211,252,0.22)";
+    ctx.fillRect(w.x, w.y, w.w, 4);
+    ctx.shadowColor = "rgba(56,189,248,0.7)";
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = "rgba(125,211,252,0.6)";
     ctx.lineWidth = 2;
     ctx.strokeRect(w.x, w.y, w.w, w.h);
+    ctx.restore();
   }
 }
+
 
 function drawCore(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   const p = engine.corePos;
