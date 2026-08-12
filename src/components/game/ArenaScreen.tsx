@@ -177,16 +177,16 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
 
       {/* Top HUD */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div className="absolute left-3 top-3 rounded-full border border-border/60 bg-card/70 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-muted-foreground shadow-sm">
+      <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-background/85 via-background/40 to-transparent p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="absolute left-3 top-3 rounded-full border border-border/50 bg-card/60 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-muted-foreground backdrop-blur-sm">
           <span className="mr-2">FPS</span>
           <span className="font-mono text-sm font-bold text-foreground">{fpsDisplay}</span>
         </div>
         <div className="flex items-center gap-3">
           <Bar label="YOU" ratio={p ? p.hp / p.maxHp : 1} value={p ? Math.ceil(p.hp) : 0} tone="primary" />
-          <div className="shrink-0 text-center">
-            <div className="font-mono text-lg font-bold text-foreground">{hud ? fmt(hud.timeLeft) : "--:--"}</div>
-            <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          <div className="shrink-0 rounded-lg border border-border/50 bg-card/60 px-2.5 py-1 text-center backdrop-blur-sm">
+            <div className="font-mono text-lg font-black tabular-nums text-foreground">{hud ? fmt(hud.timeLeft) : "--:--"}</div>
+            <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
               {hud?.core.active ? "CORE ACTIVE" : "CORE IDLE"}
             </div>
           </div>
@@ -198,14 +198,25 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
             reverse
           />
         </div>
-        <div className="mt-2 flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
-          <span className="rounded bg-card/70 px-2 py-1">ULT {Math.floor(ultReady * 100)}%</span>
+        <div className="mt-2 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em]">
+          <span
+            className={`rounded-full border px-2.5 py-1 ${
+              ultReady >= 1
+                ? "border-accent/70 bg-accent/20 text-accent shadow-[0_0_16px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]"
+                : "border-border/50 bg-card/60 text-muted-foreground"
+            }`}
+          >
+            ULT {Math.floor(ultReady * 100)}%
+          </span>
           {C.features.essenceUpgrades && (
-            <span className="rounded bg-cyan-400/15 px-2 py-1 font-bold text-cyan-300">ESSENCE {hud?.essence ?? 0}</span>
+            <span className="rounded-full border border-cyan-400/50 bg-cyan-400/15 px-2.5 py-1 text-cyan-200 shadow-[0_0_14px_rgba(34,211,238,0.25)]">
+              ESSENCE {hud?.essence ?? 0}
+            </span>
           )}
           {p && p.ultActiveFor > 0 && <Chip>OVERDRIVE</Chip>}
         </div>
       </div>
+
 
       {/* Temporary upgrades (match-only) */}
       {C.features.essenceUpgrades && hud && (
