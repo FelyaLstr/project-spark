@@ -664,7 +664,10 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     if (p.trail.length > 1) {
       ctx.save();
       ctx.strokeStyle = glow;
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = isQ ? 22 : 10;
       ctx.lineCap = "round";
+
       for (let i = 1; i < p.trail.length; i++) {
         const a = p.trail[i - 1]!;
         const b = p.trail[i]!;
