@@ -395,31 +395,61 @@ function healthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 
-function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string) {
+function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string, dark: string) {
   if (!f.alive) return;
+  const now = Date.now();
   ctx.save();
   ctx.translate(f.pos.x, f.pos.y);
+
+  // contact shadow — separates the silhouette from the floor
+  ctx.save();
+  ctx.scale(1, 0.45);
+  ctx.beginPath();
+  ctx.arc(0, f.radius * 1.5, f.radius * 1.05, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fill();
+  ctx.restore();
+
   if (f.ultActiveFor > 0) {
-    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 90);
+    // OVERDRIVE: layered amber aura + rotating blades
+    const pulse = 0.5 + 0.5 * Math.sin(now / 90);
+    const ag = ctx.createRadialGradient(0, 0, f.radius, 0, 0, f.radius + 44 + pulse * 8);
+    ag.addColorStop(0, "rgba(251,191,36,0.32)");
+    ag.addColorStop(1, "rgba(251,191,36,0)");
+    ctx.fillStyle = ag;
     ctx.beginPath();
-    ctx.arc(0, 0, f.radius + 14 + pulse * 4, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(251,191,36,0.2)";
+    ctx.arc(0, 0, f.radius + 46 + pulse * 8, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(251,191,36,0.9)";
+    ctx.save();
+    ctx.rotate(now / 320);
+    ctx.strokeStyle = `rgba(253,224,71,${0.65 + pulse * 0.3})`;
+    ctx.shadowColor = "rgba(251,191,36,0.9)";
+    ctx.shadowBlur = 20;
     ctx.lineWidth = 3;
+    ctx.setLineDash([18, 14]);
+    ctx.beginPath();
+    ctx.arc(0, 0, f.radius + 16 + pulse * 4, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
   }
   if (f.invulnFor > 0 || f.dashFor > 0) {
     // i-frame indicator: rotating dashed shield so dodges are unmistakable
     ctx.save();
-    ctx.rotate(Date.now() / 220);
+    ctx.rotate(now / 220);
     ctx.beginPath();
     ctx.arc(0, 0, f.radius + 11, 0, Math.PI * 2);
     ctx.strokeStyle = "rgba(163,230,53,0.95)";
     ctx.shadowColor = "rgba(163,230,53,0.9)";
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = 18;
     ctx.setLineDash([9, 7]);
     ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.rotate(-now / 110);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, f.radius + 17, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -431,25 +461,67 @@ function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string) {
     ctx.stroke();
   }
 
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 22;
+  // team glow pool
+  const glow = ctx.createRadialGradient(0, 0, f.radius * 0.6, 0, 0, f.radius + 26);
+  glow.addColorStop(0, `${color}55`);
+  glow.addColorStop(1, `${color}00`);
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, f.radius + 26, 0, Math.PI * 2);
+  ctx.fill();
+
+  // body: shaded orb with hard neon rim for a clean silhouette
+  ctx.save();
+  ctx.rotate(f.facing);
+  const body = ctx.createRadialGradient(-f.radius * 0.35, -f.radius * 0.4, f.radius * 0.15, 0, 0, f.radius);
+  if (f.hitFlash > 0) {
+    body.addColorStop(0, "#ffffff");
+    body.addColorStop(1, "#ffffff");
+  } else {
+    body.addColorStop(0, "#f8fbff");
+    body.addColorStop(0.45, color);
+    body.addColorStop(1, dark);
+  }
   ctx.beginPath();
   ctx.arc(0, 0, f.radius, 0, Math.PI * 2);
-  ctx.fillStyle = f.hitFlash > 0 ? "#ffffff" : f.invulnFor > 0 ? "#e2e8f0" : color;
+  ctx.fillStyle = body;
   ctx.fill();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 18;
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = "rgba(240,249,255,0.9)";
+  ctx.stroke();
   ctx.shadowBlur = 0;
 
-  ctx.rotate(f.facing);
+  // shoulder plates read as a facing-aware silhouette
+  ctx.beginPath();
+  ctx.moveTo(-f.radius * 0.2, -f.radius * 1.05);
+  ctx.lineTo(f.radius * 0.55, -f.radius * 0.55);
+  ctx.lineTo(f.radius * 0.55, f.radius * 0.55);
+  ctx.lineTo(-f.radius * 0.2, f.radius * 1.05);
+  ctx.closePath();
+  ctx.fillStyle = `${dark}cc`;
+  ctx.fill();
+  ctx.strokeStyle = `${color}`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // weapon prong
   ctx.beginPath();
   ctx.moveTo(f.radius - 2, 0);
-  ctx.lineTo(f.radius + 16, 0);
-  ctx.strokeStyle = "#e2e8f0";
+  ctx.lineTo(f.radius + 18, 0);
+  ctx.strokeStyle = "#f1f5f9";
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 12;
   ctx.lineWidth = 5;
+  ctx.lineCap = "round";
   ctx.stroke();
+  ctx.restore();
   ctx.restore();
 
   healthBar(ctx, f.pos.x, f.pos.y - f.radius - 18, 60, f.hp / f.maxHp, color);
 }
+
 
 function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
   const guardian = m.kind === "guardian";
