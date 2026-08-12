@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArenaScreen, type MatchResult } from "@/components/game/ArenaScreen";
 import { matchService } from "@/services/matchService";
 import { initTelegram } from "@/services/telegram";
@@ -16,7 +16,8 @@ export const Route = createFileRoute("/")({
       { property: "og:title", content: "Vanguard Arena — 1v1 PvP Mini Game" },
       {
         property: "og:description",
-        content: "Fast 1v1 top-down arena duels with skillshots, neutral camps and a contested Core objective.",
+        content:
+          "Fast 1v1 top-down arena duels with skillshots, neutral camps and a contested Core objective.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -30,7 +31,8 @@ type Screen = "MENU" | "MATCHMAKING" | "ARENA" | "RESULTS";
 type Profile = { name: string; rating: number; wins: number; losses: number; streak: number };
 
 const loadProfile = (): Profile => {
-  if (typeof window === "undefined") return { name: "Vanguard", rating: 1000, wins: 0, losses: 0, streak: 0 };
+  if (typeof window === "undefined")
+    return { name: "Vanguard", rating: 1000, wins: 0, losses: 0, streak: 0 };
   try {
     const raw = localStorage.getItem("va_profile");
     if (raw) return JSON.parse(raw) as Profile;
@@ -46,6 +48,8 @@ function App() {
   const [result, setResult] = useState<MatchResult | null>(null);
   const [profile, setProfile] = useState<Profile>(() => loadProfile());
   const [matchKey, setMatchKey] = useState(0);
+  // identifies the current search so a cancelled one cannot enter the arena late
+  const searchId = useRef(0);
 
   useEffect(() => {
     const tg = initTelegram();
@@ -57,14 +61,22 @@ function App() {
   }, [profile]);
 
   const startSearch = useCallback(async () => {
+    const id = ++searchId.current;
     setScreen("MATCHMAKING");
     const ticket = await matchService.findMatch();
+    if (searchId.current !== id) return;
     setOpponent(ticket.opponentName);
     setMatchKey((k) => k + 1);
     setScreen("ARENA");
   }, []);
 
+  const cancelSearch = useCallback(() => {
+    searchId.current++;
+    setScreen("MENU");
+  }, []);
+
   const practice = () => {
+    searchId.current++;
     setOpponent("Training Dummy");
     setMatchKey((k) => k + 1);
     setScreen("ARENA");
@@ -84,7 +96,12 @@ function App() {
 
   if (screen === "ARENA") {
     return (
-      <ArenaScreen key={matchKey} opponentName={opponent} onFinish={onFinish} onQuit={() => setScreen("MENU")} />
+      <ArenaScreen
+        key={matchKey}
+        opponentName={opponent}
+        onFinish={onFinish}
+        onQuit={() => setScreen("MENU")}
+      />
     );
   }
 
@@ -93,7 +110,7 @@ function App() {
       <div className="pointer-events-none absolute -top-32 left-1/2 size-96 -translate-x-1/2 rounded-full bg-primary/20 blur-[120px]" />
       <div className="relative mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col">
         {screen === "MENU" && <Menu profile={profile} onPlay={startSearch} onPractice={practice} />}
-        {screen === "MATCHMAKING" && <Searching onCancel={() => setScreen("MENU")} />}
+        {screen === "MATCHMAKING" && <Searching onCancel={cancelSearch} />}
         {screen === "RESULTS" && result && (
           <Results result={result} onRematch={startSearch} onMenu={() => setScreen("MENU")} />
         )}
@@ -102,14 +119,24 @@ function App() {
   );
 }
 
-function Menu({ profile, onPlay, onPractice }: { profile: Profile; onPlay: () => void; onPractice: () => void }) {
+function Menu({
+  profile,
+  onPlay,
+  onPractice,
+}: {
+  profile: Profile;
+  onPlay: () => void;
+  onPractice: () => void;
+}) {
   return (
     <>
       <header className="text-center">
         <h1 className="text-4xl font-black uppercase tracking-[0.2em] text-primary drop-shadow-[0_0_24px_var(--color-primary)]">
           Vanguard
         </h1>
-        <p className="mt-1 text-xs uppercase tracking-[0.35em] text-muted-foreground">Arena · 1v1</p>
+        <p className="mt-1 text-xs uppercase tracking-[0.35em] text-muted-foreground">
+          Arena · 1v1
+        </p>
       </header>
 
       <section className="mt-8 rounded-2xl border border-border/60 bg-card/60 p-4 backdrop-blur">
@@ -119,7 +146,9 @@ function Menu({ profile, onPlay, onPractice }: { profile: Profile; onPlay: () =>
           </div>
           <div className="min-w-0">
             <div className="truncate text-lg font-bold">{profile.name}</div>
-            <div className="text-xs uppercase tracking-widest text-muted-foreground">Rating {profile.rating}</div>
+            <div className="text-xs uppercase tracking-widest text-muted-foreground">
+              Rating {profile.rating}
+            </div>
           </div>
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2 text-center">
@@ -164,8 +193,13 @@ function Searching({ onCancel }: { onCancel: () => void }) {
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-6">
       <div className="size-24 animate-spin rounded-full border-4 border-primary/20 border-t-primary" />
-      <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">Searching for opponent…</p>
-      <button onClick={onCancel} className="text-xs uppercase tracking-widest text-muted-foreground underline">
+      <p className="text-sm uppercase tracking-[0.3em] text-muted-foreground">
+        Searching for opponent…
+      </p>
+      <button
+        onClick={onCancel}
+        className="text-xs uppercase tracking-widest text-muted-foreground underline"
+      >
         Cancel
       </button>
     </div>

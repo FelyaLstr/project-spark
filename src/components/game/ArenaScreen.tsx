@@ -4,7 +4,7 @@ import { render } from "@/game/rendering/renderer";
 import { InputController } from "@/game/input/InputController";
 import { GAME_CONFIG } from "@/game/config/gameConfig";
 import { clamp } from "@/game/core/math";
-import type { AbilityKey, Snapshot, UpgradeKind } from "@/game/core/types";
+import type { AbilityKey, CampStatus, Snapshot, UpgradeKind } from "@/game/core/types";
 import { Joystick } from "./Joystick";
 import { AbilityButton } from "./AbilityButton";
 
@@ -38,8 +38,16 @@ function getCamera(viewW: number, viewH: number, playerPos: { x: number; y: numb
   return {
     zoom,
     cam: {
-      x: clamp(playerPos.x, Math.min(halfW, C.arena.width / 2), Math.max(C.arena.width - halfW, C.arena.width / 2)),
-      y: clamp(playerPos.y, Math.min(halfH, C.arena.height / 2), Math.max(C.arena.height - halfH, C.arena.height / 2)),
+      x: clamp(
+        playerPos.x,
+        Math.min(halfW, C.arena.width / 2),
+        Math.max(C.arena.width - halfW, C.arena.width / 2),
+      ),
+      y: clamp(
+        playerPos.y,
+        Math.min(halfH, C.arena.height / 2),
+        Math.max(C.arena.height - halfH, C.arena.height / 2),
+      ),
     },
   };
 }
@@ -51,9 +59,14 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   const [hud, setHud] = useState<Snapshot | null>(null);
   const [flash, setFlash] = useState<UpgradeKind | null>(null);
   const [fpsDisplay, setFpsDisplay] = useState(60);
-  const [isPortrait, setIsPortrait] = useState(() => (typeof window !== "undefined" ? window.innerHeight >= window.innerWidth : false));
+  const [isPortrait, setIsPortrait] = useState(() =>
+    typeof window !== "undefined" ? window.innerHeight >= window.innerWidth : false,
+  );
   const finished = useRef(false);
-
+  const flashTimer = useRef(0);
+  // kept in a ref so a parent re-render never tears down the game loop and its listeners
+  const onFinishRef = useRef(onFinish);
+  onFinishRef.current = onFinish;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -98,7 +111,6 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       render(ctx, engine, canvas.clientWidth, canvas.clientHeight, dpr, fps);
 
-
       hudTimer -= dt;
       if (hudTimer <= 0) {
         hudTimer = 0.08;
@@ -107,7 +119,7 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       if (engine.phase === "RESULTS" && !finished.current) {
         finished.current = true;
         const p = engine.player;
-        onFinish({
+        onFinishRef.current({
           won: engine.winner === "A",
           damageDealt: Math.round(p.stats.damageDealt),
           damageTaken: Math.round(p.stats.damageTaken),
@@ -141,11 +153,12 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       if (e.button === 2) input.queue("q");
     };
     const preventScroll = (e: TouchEvent) => e.preventDefault();
+    const preventMenu = (e: Event) => e.preventDefault();
     window.addEventListener("keydown", kd);
     window.addEventListener("keyup", ku);
     canvas.addEventListener("mousemove", mm);
     canvas.addEventListener("mousedown", md);
-    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+    canvas.addEventListener("contextmenu", preventMenu);
     document.addEventListener("touchmove", preventScroll, { passive: false });
 
     return () => {
@@ -157,9 +170,11 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       window.removeEventListener("keyup", ku);
       canvas.removeEventListener("mousemove", mm);
       canvas.removeEventListener("mousedown", md);
+      canvas.removeEventListener("contextmenu", preventMenu);
       document.removeEventListener("touchmove", preventScroll);
+      window.clearTimeout(flashTimer.current);
     };
-  }, [engine, input, onFinish]);
+  }, [engine, input]);
 
   const cast = (a: AbilityKey) => input.queue(a);
   const aimStart = (a: AbilityKey) => {
@@ -168,9 +183,17 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   const aimEnd = () => {
     engine.aimPreview = { active: false, ability: null };
   };
+  const buy = (kind: UpgradeKind) => {
+    if (!engine.buyUpgrade(kind)) return;
+    // refresh straight away: the throttled HUD tick would show stale pips/essence
+    setHud({ ...engine.snapshot() });
+    setFlash(kind);
+    window.clearTimeout(flashTimer.current);
+    flashTimer.current = window.setTimeout(() => setFlash((f) => (f === kind ? null : f)), 450);
+  };
+
   const p = hud?.player;
   const ultReady = p ? p.ultCharge / C.abilities.r.chargeMax : 0;
-
 
   return (
     <div className="relative h-[100dvh] w-full touch-none overflow-hidden overscroll-none bg-background">
@@ -183,9 +206,16 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
           <span className="font-mono text-sm font-bold text-foreground">{fpsDisplay}</span>
         </div>
         <div className="flex items-center gap-3">
-          <Bar label="YOU" ratio={p ? p.hp / p.maxHp : 1} value={p ? Math.ceil(p.hp) : 0} tone="primary" />
+          <Bar
+            label="YOU"
+            ratio={p ? p.hp / p.maxHp : 1}
+            value={p ? Math.ceil(p.hp) : 0}
+            tone="primary"
+          />
           <div className="shrink-0 text-center">
-            <div className="font-mono text-lg font-bold text-foreground">{hud ? fmt(hud.timeLeft) : "--:--"}</div>
+            <div className="font-mono text-lg font-bold text-foreground">
+              {hud ? fmt(hud.timeLeft) : "--:--"}
+            </div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
               {hud?.core.active ? "CORE ACTIVE" : "CORE IDLE"}
             </div>
@@ -201,10 +231,30 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
         <div className="mt-2 flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
           <span className="rounded bg-card/70 px-2 py-1">ULT {Math.floor(ultReady * 100)}%</span>
           {C.features.essenceUpgrades && (
-            <span className="rounded bg-cyan-400/15 px-2 py-1 font-bold text-cyan-300">ESSENCE {hud?.essence ?? 0}</span>
+            <span className="rounded bg-cyan-400/15 px-2 py-1 font-bold text-cyan-300">
+              ESSENCE {hud?.essence ?? 0}
+            </span>
           )}
           {p && p.ultActiveFor > 0 && <Chip>OVERDRIVE</Chip>}
         </div>
+        {hud && (
+          <div className="mt-2 flex items-center justify-center gap-2">
+            {hud.camps.map((c, i) => (
+              <CampChip key={c.id} camp={c} label={i === 0 ? "CAMP W" : "CAMP E"} />
+            ))}
+          </div>
+        )}
+        {hud && (
+          <div className="mt-2 text-center">
+            <span
+              className={`rounded px-2 py-1 text-[11px] font-bold uppercase tracking-wider ${
+                hud.inCombat ? "bg-amber-400/20 text-amber-200" : "bg-card/70 text-muted-foreground"
+              }`}
+            >
+              {nextStep(hud)}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Temporary upgrades (match-only) */}
@@ -217,12 +267,7 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
             return (
               <button
                 key={u.kind}
-                onClick={() => {
-                  if (engine.buyUpgrade(u.kind)) {
-                    setFlash(u.kind);
-                    window.setTimeout(() => setFlash((f) => (f === u.kind ? null : f)), 450);
-                  }
-                }}
+                onClick={() => buy(u.kind)}
                 disabled={!affordable}
                 className={`w-[74px] rounded-lg border px-1.5 py-1.5 text-center transition ${
                   flash === u.kind
@@ -232,7 +277,9 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
                       : "border-border/50 bg-card/50 opacity-55"
                 }`}
               >
-                <div className="text-[10px] font-black uppercase tracking-wider text-foreground">{u.label}</div>
+                <div className="text-[10px] font-black uppercase tracking-wider text-foreground">
+                  {u.label}
+                </div>
                 <div className="mt-1 flex justify-center gap-0.5">
                   {Array.from({ length: C.upgrades.maxLevel }).map((_, i) => (
                     <span
@@ -249,7 +296,6 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
           })}
         </div>
       )}
-
 
       {/* Announcement / countdown */}
       {hud?.phase === "COUNTDOWN" && (
@@ -382,6 +428,42 @@ function Chip({ children }: { children: React.ReactNode }) {
   return <span className="rounded bg-primary/15 px-2 py-1 text-primary">{children}</span>;
 }
 
+/** The single most useful thing the player can do right now. */
+function nextStep(hud: Snapshot): string {
+  if (hud.phase === "COUNTDOWN") return "GET READY";
+  if (hud.phase === "SUDDEN_DEATH") return "STAY IN THE SAFE ZONE";
+  const canUpgrade =
+    C.features.essenceUpgrades &&
+    hud.essence >= C.upgrades.cost &&
+    UPGRADES.some((u) => hud.upgrades[u.kind] < C.upgrades.maxLevel);
+  if (canUpgrade) return "UPGRADE READY";
+  if (hud.inCombat) return "FIGHTING";
+  if (hud.core.active) return "CONTEST THE CORE";
+  if (hud.camps.some((c) => c.mobsAlive > 0 || c.phase === "PENDING"))
+    return "FARM A CAMP FOR ESSENCE";
+  return "HUNT THE ENEMY";
+}
+
+function CampChip({ camp, label }: { camp: CampStatus; label: string }) {
+  const respawning = camp.phase === "CLEARED" || camp.phase === "RESPAWNING";
+  const tone =
+    camp.phase === "COMBAT"
+      ? "bg-amber-400/20 text-amber-200"
+      : camp.phase === "AVAILABLE"
+        ? "bg-lime-400/15 text-lime-300"
+        : "bg-card/70 text-muted-foreground";
+  const detail = respawning
+    ? `RESPAWN ${Math.ceil(camp.respawnIn)}s`
+    : camp.phase === "PENDING"
+      ? "DORMANT"
+      : `${camp.mobsAlive}/${camp.mobsTotal}`;
+  return (
+    <span className={`rounded px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${tone}`}>
+      {label} · {detail}
+    </span>
+  );
+}
+
 function Bar({
   label,
   ratio,
@@ -395,17 +477,44 @@ function Bar({
   tone: "primary" | "destructive";
   reverse?: boolean;
 }) {
+  const pct = Math.max(0, Math.min(1, ratio)) * 100;
+  const ghost = useDamageGhost(pct);
   return (
     <div className="min-w-0 flex-1">
-      <div className={`flex text-[10px] uppercase tracking-widest text-muted-foreground ${reverse ? "justify-end" : ""}`}>
-        <span className="truncate">{label} · {value}</span>
+      <div
+        className={`flex text-[10px] uppercase tracking-widest text-muted-foreground ${reverse ? "justify-end" : ""}`}
+      >
+        <span className="truncate">
+          {label} · {value}
+        </span>
       </div>
-      <div className={`mt-1 h-2.5 w-full overflow-hidden rounded-full bg-card/80 ${reverse ? "flex justify-end" : ""}`}>
+      <div className="relative mt-1 h-2.5 w-full overflow-hidden rounded-full bg-card/80">
+        {/* recently lost health, so a hit reads even between HUD ticks */}
         <div
-          className={`h-full ${tone === "primary" ? "bg-primary" : "bg-destructive"}`}
-          style={{ width: `${Math.max(0, Math.min(1, ratio)) * 100}%` }}
+          className={`absolute inset-y-0 bg-foreground/45 transition-[width] duration-300 ${reverse ? "right-0" : "left-0"}`}
+          style={{ width: `${ghost}%` }}
+        />
+        <div
+          className={`absolute inset-y-0 ${reverse ? "right-0" : "left-0"} ${
+            tone === "primary" ? "bg-primary" : "bg-destructive"
+          }`}
+          style={{ width: `${pct}%` }}
         />
       </div>
     </div>
   );
+}
+
+/** Holds the previous health percentage briefly so damage is visible as a trailing bar. */
+function useDamageGhost(pct: number) {
+  const [ghost, setGhost] = useState(pct);
+  useEffect(() => {
+    if (pct >= ghost) {
+      setGhost(pct);
+      return;
+    }
+    const t = window.setTimeout(() => setGhost(pct), 260);
+    return () => window.clearTimeout(t);
+  }, [pct, ghost]);
+  return ghost;
 }

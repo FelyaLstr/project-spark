@@ -1,18 +1,10 @@
 import { GAME_CONFIG } from "../config/gameConfig";
-import {
-  add,
-  clamp,
-  dist,
-  norm,
-  resolveCircleRect,
-  scale,
-  sub,
-  type Vec,
-} from "../core/math";
+import { add, clamp, dist, norm, resolveCircleRect, scale, sub, type Vec } from "../core/math";
 import type {
   AbilityKey,
   AimPreview,
   Camp,
+  CampStatus,
   CoreState,
   Effect,
   Fighter,
@@ -26,10 +18,9 @@ import type {
   UpgradeKind,
 } from "../core/types";
 import { emptyCommand } from "../core/types";
-import { makeCamps, resetMobIds, spawnCampMobs, spawnGuardian } from "../mobs/mobs";
+import { makeCamps, resetMobIds, spawnGuardian } from "../mobs/mobs";
 import { updateMobs } from "../mobs/MobController";
 import { createAIController, type AIController } from "../ai/AIController";
-
 
 const C = GAME_CONFIG;
 let idc = 0;
@@ -95,7 +86,6 @@ export class GameEngine {
   private announceTimer = 0;
   private ai: AIController = createAIController(C.ai.difficulty);
   private timers: Timer[] = [];
-  private campsSpawned = false;
   private guardianSpawned = false;
   private coreWave = 0;
   private freeze = 0;
@@ -104,7 +94,6 @@ export class GameEngine {
   private dodgeTextCd: Record<string, number> = {};
   /** last frame's collision state, for the debug overlay */
   debugInfo = { playerBlocked: false, enemyBlocked: false, fighterContact: false };
-
 
   readonly corePos: Vec = { x: C.arena.width / 2, y: C.arena.height / 2 };
 
@@ -127,7 +116,6 @@ export class GameEngine {
     this.winner = null;
     this.announcement = null;
     this.aimPreview = { active: false, ability: null };
-    this.campsSpawned = false;
     this.guardianSpawned = false;
     this.coreWave = 0;
     this.freeze = 0;
@@ -135,7 +123,6 @@ export class GameEngine {
     this.dodgeTextCd = {};
     this.ai = createAIController(C.ai.difficulty);
   }
-
 
   announce(text: string) {
     this.announcement = text;
@@ -189,7 +176,13 @@ export class GameEngine {
       life: 1.1,
       color: "#7dd3fc",
     });
-    this.pushEffect({ kind: "impact-ring", pos: { ...who.pos }, radius: who.radius + 30, life: 0.45, color: "#38bdf8" });
+    this.pushEffect({
+      kind: "impact-ring",
+      pos: { ...who.pos },
+      radius: who.radius + 30,
+      life: 0.45,
+      color: "#38bdf8",
+    });
     return true;
   }
 
@@ -206,7 +199,6 @@ export class GameEngine {
       color: "#67e8f9",
     });
   }
-
 
   // ---------- main loop ----------
   update(rawDt: number, playerCmd: InputCommand) {
@@ -275,7 +267,6 @@ export class GameEngine {
           dt,
         )
       : emptyCommand();
-
 
     this.updateFighter(this.player, playerCmd, dt);
     this.updateFighter(this.enemy, aiCmd, dt);
@@ -352,7 +343,6 @@ export class GameEngine {
     return m;
   }
 
-
   private updateFighter(f: Fighter, cmd: InputCommand, dt: number) {
     if (!f.alive) return;
     for (const k of Object.keys(f.cooldowns) as AbilityKey[]) {
@@ -374,19 +364,27 @@ export class GameEngine {
 
     if (f.dashFor > 0) {
       // dash keeps its own velocity, leaves a dense readable trail
-      this.pushEffect({ kind: "dash-trail", pos: { ...f.pos }, radius: f.radius, life: 0.26, color: f.team === "A" ? "#38bdf8" : "#fb7185" });
+      this.pushEffect({
+        kind: "dash-trail",
+        pos: { ...f.pos },
+        radius: f.radius,
+        life: 0.26,
+        color: f.team === "A" ? "#38bdf8" : "#fb7185",
+      });
     } else {
       const maxSpeed = this.speedOf(f);
       const target = scale(move, maxSpeed * Math.min(1, ml || 0));
       let rate: number = ml > 0.02 ? C.vanguard.acceleration : C.vanguard.deceleration;
       // bleed off dash overspeed over the recovery window instead of snapping
       const speed = Math.hypot(f.vel.x, f.vel.y);
-      if (speed > maxSpeed * 1.05) rate = Math.max(rate, (speed - maxSpeed) / Math.max(0.01, C.abilities.w.recovery));
+      if (speed > maxSpeed * 1.05)
+        rate = Math.max(rate, (speed - maxSpeed) / Math.max(0.01, C.abilities.w.recovery));
 
       const diff = sub(target, f.vel);
       const dl = Math.hypot(diff.x, diff.y);
       const maxStep = rate * dt;
-      f.vel = dl <= maxStep ? target : add(f.vel, scale({ x: diff.x / dl, y: diff.y / dl }, maxStep));
+      f.vel =
+        dl <= maxStep ? target : add(f.vel, scale({ x: diff.x / dl, y: diff.y / dl }, maxStep));
     }
 
     let step = scale(f.vel, dt);
@@ -395,7 +393,8 @@ export class GameEngine {
 
     const wanted = add(f.pos, step);
     const resolved = this.collide(wanted, f.radius);
-    const blocked = Math.abs(resolved.x - wanted.x) > 0.01 || Math.abs(resolved.y - wanted.y) > 0.01;
+    const blocked =
+      Math.abs(resolved.x - wanted.x) > 0.01 || Math.abs(resolved.y - wanted.y) > 0.01;
     if (f.team === "A") this.debugInfo.playerBlocked = blocked;
     else this.debugInfo.enemyBlocked = blocked;
     // if a wall stopped us, kill the velocity component into it
@@ -404,7 +403,6 @@ export class GameEngine {
       if (Math.abs(resolved.y - wanted.y) > 0.01) f.vel.y = 0;
     }
     f.pos = resolved;
-
 
     if (cmd.cast) this.tryCast(f, cmd.cast, aim);
   }
@@ -460,7 +458,14 @@ export class GameEngine {
       dir,
       radius: kind === "q" ? 30 : 15,
       life: kind === "q" ? 0.2 : 0.12,
-      color: f.team === "A" ? (kind === "q" ? "#c4b5fd" : "#67e8f9") : kind === "q" ? "#fdba74" : "#fda4af",
+      color:
+        f.team === "A"
+          ? kind === "q"
+            ? "#c4b5fd"
+            : "#67e8f9"
+          : kind === "q"
+            ? "#fdba74"
+            : "#fda4af",
     });
   }
 
@@ -516,15 +521,26 @@ export class GameEngine {
       // instant, fully predictable dash vector (no acceleration ramp)
       f.vel = scale(dir, w.distance / w.duration);
       f.knockback = { x: 0, y: 0 };
-      this.pushEffect({ kind: "dodge-ring", pos: { ...f.pos }, radius: 44, life: 0.28, color: "#a5f3fc" });
+      this.pushEffect({
+        kind: "dodge-ring",
+        pos: { ...f.pos },
+        radius: 44,
+        life: 0.28,
+        color: "#a5f3fc",
+      });
       return;
     }
-
 
     if (key === "e") {
       const e = C.abilities.e;
       f.cooldowns.e = e.cooldown * cdm;
-      this.pushEffect({ kind: "shockwave", pos: { ...f.pos }, radius: e.radius, life: e.telegraph + 0.2, color: f.team === "A" ? "#60a5fa" : "#fb7185" });
+      this.pushEffect({
+        kind: "shockwave",
+        pos: { ...f.pos },
+        radius: e.radius,
+        life: e.telegraph + 0.2,
+        color: f.team === "A" ? "#60a5fa" : "#fb7185",
+      });
       const mult = this.damageMult(f);
       const origin = { ...f.pos };
       this.later(e.telegraph, () => {
@@ -544,8 +560,20 @@ export class GameEngine {
       f.ultCharge = 0;
       f.ultActiveFor = C.abilities.r.duration;
       this.pushEffect({ kind: "hit", pos: { ...f.pos }, radius: 130, life: 0.7, color: "#fbbf24" });
-      this.pushEffect({ kind: "shockwave", pos: { ...f.pos }, radius: 110, life: 0.5, color: "#fbbf24" });
-      this.pushEffect({ kind: "text", pos: { ...f.pos }, text: "OVERDRIVE", life: 1.4, color: "#fbbf24" });
+      this.pushEffect({
+        kind: "shockwave",
+        pos: { ...f.pos },
+        radius: 110,
+        life: 0.5,
+        color: "#fbbf24",
+      });
+      this.pushEffect({
+        kind: "text",
+        pos: { ...f.pos },
+        text: "OVERDRIVE",
+        life: 1.4,
+        color: "#fbbf24",
+      });
       this.announce(f.team === "A" ? "OVERDRIVE" : "ENEMY OVERDRIVE");
     }
   }
@@ -569,13 +597,22 @@ export class GameEngine {
   /** Central damage entry point — nothing else should touch hp. Same path for player and AI. */
   applyDamage(source: Fighter | Mob | null, target: Fighter | Mob, amount: number) {
     if (!target.alive) return;
+    // a dead attacker deals nothing: in-flight projectiles and queued telegraphs
+    // must not resolve after their owner died
+    if (source && !source.alive) return;
     const R = C.abilities.r;
     const F = C.feedback;
     if (this.isFighter(target) && (target.invulnFor > 0 || target.dashFor > 0)) {
       // i-frame dodge: one popup per window, plus a soft ring pulse
       if ((this.dodgeTextCd[target.id] ?? 0) <= 0) {
         this.dodgeTextCd[target.id] = F.dodgeTextCooldown;
-        this.pushEffect({ kind: "text", pos: { ...target.pos }, text: "DODGE", life: 0.6, color: "#a3e635" });
+        this.pushEffect({
+          kind: "text",
+          pos: { ...target.pos },
+          text: "DODGE",
+          life: 0.6,
+          color: "#a3e635",
+        });
       }
       this.pushEffect({
         kind: "dodge-ring",
@@ -614,7 +651,11 @@ export class GameEngine {
       pos: { x: target.pos.x + (Math.random() - 0.5) * 16, y: target.pos.y },
       text: `${Math.round(dmg)}`,
       life: C.feedback.damageTextLife * (vsMob ? 0.75 : 1),
-      color: vsMob ? "#d9f99d" : this.isFighter(target) && target.team === "A" ? "#fca5a5" : "#fde68a",
+      color: vsMob
+        ? "#d9f99d"
+        : this.isFighter(target) && target.team === "A"
+          ? "#fca5a5"
+          : "#fde68a",
     });
 
     if (source && this.isFighter(source)) {
@@ -642,10 +683,18 @@ export class GameEngine {
           this.grantEssence(source, cfg.essence, mob.pos);
           if (mob.kind === "guardian") {
             source.buffs.guardianPower += C.mobs.guardian.abilityPowerBonus;
-            this.announce(source.team === "A" ? "YOU SLEW THE GUARDIAN" : "ENEMY SLEW THE GUARDIAN");
+            this.announce(
+              source.team === "A" ? "YOU SLEW THE GUARDIAN" : "ENEMY SLEW THE GUARDIAN",
+            );
           }
         }
-        this.pushEffect({ kind: "hit", pos: { ...mob.pos }, radius: mob.radius * 2, life: 0.4, color: "#84cc16" });
+        this.pushEffect({
+          kind: "hit",
+          pos: { ...mob.pos },
+          radius: mob.radius * 2,
+          life: 0.4,
+          color: "#84cc16",
+        });
         this.pushEffect({
           kind: "impact-ring",
           pos: { ...mob.pos },
@@ -655,20 +704,35 @@ export class GameEngine {
         });
       }
     }
-
   }
 
   private onFighterDeath(f: Fighter) {
+    // the first death decides the match; a later one must not flip the winner or
+    // restart the freeze
+    if (this.winner) return;
     this.winner = f.team === "A" ? "B" : "A";
+    // the loser's bolts stay visible but no longer count toward accuracy
+    for (const p of this.projectiles) if (p.owner === f.id) p.tracked = false;
     this.phase = "PLAYER_DEAD";
     this.freeze = C.match.freezeOnDeath;
     this.hitStop = Math.max(this.hitStop, 0.09);
     f.vel = { x: 0, y: 0 };
     this.pushEffect({ kind: "hit", pos: { ...f.pos }, radius: 110, life: 1.2, color: "#ef4444" });
-    this.pushEffect({ kind: "shockwave", pos: { ...f.pos }, radius: 90, life: 0.6, color: "#ef4444" });
-    this.pushEffect({ kind: "impact-ring", pos: { ...f.pos }, radius: 150, life: 0.9, color: "#f87171" });
+    this.pushEffect({
+      kind: "shockwave",
+      pos: { ...f.pos },
+      radius: 90,
+      life: 0.6,
+      color: "#ef4444",
+    });
+    this.pushEffect({
+      kind: "impact-ring",
+      pos: { ...f.pos },
+      radius: 150,
+      life: 0.9,
+      color: "#f87171",
+    });
   }
-
 
   // ---------- mobs ----------
   private updateMobs(dt: number) {
@@ -686,7 +750,6 @@ export class GameEngine {
       dt,
     );
   }
-
 
   // ---------- projectiles ----------
   private updateProjectiles(dt: number) {
@@ -722,12 +785,25 @@ export class GameEngine {
             p.pos.y < wall.y + wall.h + p.radius
           ) {
             dead = true;
-            this.pushEffect({ kind: "fizzle", pos: { ...p.pos }, radius: p.radius * 2, life: 0.22, color: "#94a3b8" });
+            this.pushEffect({
+              kind: "fizzle",
+              pos: { ...p.pos },
+              radius: p.radius * 2,
+              life: 0.22,
+              color: "#94a3b8",
+            });
             break;
           }
         }
       }
-      if (!dead && (p.traveled > p.range || p.pos.x < 0 || p.pos.y < 0 || p.pos.x > C.arena.width || p.pos.y > C.arena.height)) {
+      if (
+        !dead &&
+        (p.traveled > p.range ||
+          p.pos.x < 0 ||
+          p.pos.y < 0 ||
+          p.pos.x > C.arena.width ||
+          p.pos.y > C.arena.height)
+      ) {
         dead = true;
         // subtle miss puff — never a damage number
         this.pushEffect({
@@ -770,7 +846,13 @@ export class GameEngine {
       this.core = { active: false, progressA: 0, progressB: 0, ownedBy: f.team };
       if (this.phase === "CORE_EVENT") this.phase = "PLAYING";
       this.announce(f.team === "A" ? "YOU CAPTURED THE CORE" : "ENEMY CAPTURED THE CORE");
-      this.pushEffect({ kind: "core-ring", pos: { ...this.corePos }, radius: C.arena.coreRadius, life: 0.9, color: "#38bdf8" });
+      this.pushEffect({
+        kind: "core-ring",
+        pos: { ...this.corePos },
+        radius: C.arena.coreRadius,
+        life: 0.9,
+        color: "#38bdf8",
+      });
     };
     if (this.core.progressA >= C.core.captureSeconds) capture(this.player);
     else if (this.core.progressB >= C.core.captureSeconds) capture(this.enemy);
@@ -808,6 +890,35 @@ export class GameEngine {
     this.effects = this.effects.filter((e) => e.life > 0);
   }
 
+  /** True while a mob is on the player, or the enemy fighter is close enough to trade. */
+  private playerInCombat() {
+    const p = this.player;
+    if (!p.alive) return false;
+    for (const m of this.mobs) {
+      if (
+        m.alive &&
+        m.target === p.id &&
+        (m.state === "CHASE" || m.state === "ATTACK" || m.state === "AGGRO")
+      ) {
+        return true;
+      }
+    }
+    return this.enemy.alive && dist(p.pos, this.enemy.pos) < C.vanguard.attackRange;
+  }
+
+  private campStatuses(): CampStatus[] {
+    return this.camps.map((c) => {
+      const mine = this.mobs.filter((m) => m.campId === c.id);
+      return {
+        id: c.id,
+        phase: c.phase,
+        respawnIn: c.respawnIn,
+        mobsAlive: mine.filter((m) => m.alive).length,
+        mobsTotal: C.mobs.crawlersPerCamp,
+      };
+    });
+  }
+
   snapshot(): Snapshot {
     return {
       phase: this.phase,
@@ -819,6 +930,8 @@ export class GameEngine {
       essence: Math.floor(this.player.essence),
       upgrades: { ...this.player.upgrades },
       core: this.core,
+      camps: this.campStatuses(),
+      inCombat: this.playerInCombat(),
 
       safeRadius: this.safeRadius,
       winner: this.winner,

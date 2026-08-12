@@ -145,6 +145,19 @@ describe("guardian attacks", () => {
     ctx.runTimers();
     expect(ctx.damage).toEqual([{ source: guardian, target: near, amount: C.guardian.damage }]);
   });
+
+  it("drops the pending slam if it dies during the telegraph", () => {
+    const guardian = makeMob("guardian", { x: 0, y: 0 }, -1);
+    const near = testFighter("A", { x: guardian.radius + 10, y: 0 });
+    const ctx = harness({ mobs: [guardian], fighters: [near] });
+    updateMobs(ctx, 0.2);
+    updateMobs(ctx, 0.2);
+    expect(ctx.timers).toHaveLength(1);
+
+    guardian.alive = false;
+    ctx.runTimers();
+    expect(ctx.damage).toHaveLength(0);
+  });
 });
 
 describe("leash and return", () => {
@@ -185,6 +198,42 @@ describe("leash and return", () => {
     updateMobs(ctx, 0.1);
     expect(mob.state).toBe("IDLE");
     expect(mob.hp).toBe(mob.maxHp);
+  });
+
+  it("arrives home even when a single step would overshoot the arrival window", () => {
+    const mob = crawlerAt({ x: 0, y: 0 });
+    mob.state = "RETURN";
+    mob.hp = 10;
+    mob.pos = { x: 8, y: 0 };
+    const ctx = harness({ mobs: [mob], fighters: [] });
+    // 0.05s of return speed covers ~9.5 units, so a fixed 6-unit window would oscillate
+    updateMobs(ctx, 0.05);
+    expect(mob.state).toBe("IDLE");
+    expect(mob.hp).toBe(mob.maxHp);
+  });
+
+  it("gives up the walk home when a wall blocks it, so the camp cannot stay leashed", () => {
+    const mob = crawlerAt({ x: 0, y: 0 });
+    mob.state = "RETURN";
+    mob.hp = 10;
+    mob.pos = { x: 200, y: 0 };
+    const ctx = harness({ mobs: [mob], fighters: [] });
+    // a wall the mob cannot path around: every step is fully rejected
+    ctx.collide = () => ({ ...mob.pos });
+    for (let i = 0; i < C.returnGiveUpSeconds / 0.05 + 1; i++) updateMobs(ctx, 0.05);
+    expect(mob.state).toBe("IDLE");
+    expect(mob.hp).toBe(mob.maxHp);
+    expect(mob.returnStuckFor).toBe(0);
+  });
+
+  it("keeps walking home while it is still making progress", () => {
+    const mob = crawlerAt({ x: 0, y: 0 });
+    mob.state = "RETURN";
+    mob.pos = { x: 500, y: 0 };
+    const ctx = harness({ mobs: [mob], fighters: [] });
+    for (let i = 0; i < 10; i++) updateMobs(ctx, 0.05);
+    expect(mob.state).toBe("RETURN");
+    expect(mob.returnStuckFor).toBe(0);
   });
 
   it("drifts back onto the idle ring when it loses its target", () => {
@@ -299,9 +348,24 @@ describe("camp phases", () => {
     const camp = pendingCamp();
     camp.phase = "AVAILABLE";
     const mob = crawlerAt(camp.pos, camp.id);
-    mob.state = "CHASE";
-    const ctx = harness({ camps: [camp], mobs: [mob], fighters: [] });
-    updateMobs(ctx, 0.1);
+    // aggroed but the fighter is outside the camp's own combat radius
+    const bait = testFighter("A", { x: camp.pos.x + 200, y: camp.pos.y });
+    const ctx = harness({ camps: [camp], mobs: [mob], fighters: [bait] });
+    updateMobs(ctx, 0.2);
+    updateMobs(ctx, 0.2);
+    expect(mob.state).toBe("CHASE");
     expect(camp.phase).toBe("COMBAT");
+  });
+
+  it("goes CLEARED on the same tick the last crawler dies", () => {
+    const camp = pendingCamp();
+    camp.phase = "COMBAT";
+    const mob = crawlerAt(camp.pos, camp.id);
+    const ctx = harness({ camps: [camp], mobs: [mob], fighters: [] });
+    mob.alive = false;
+    mob.state = "DEAD";
+    updateMobs(ctx, 0.1);
+    expect(camp.phase).toBe("CLEARED");
+    expect(camp.respawnIn).toBe(C.respawnSeconds);
   });
 });

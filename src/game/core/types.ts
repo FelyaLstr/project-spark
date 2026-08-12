@@ -78,6 +78,8 @@ export type Mob = {
   hitFlash: number;
   alive: boolean;
   respawnIn: number;
+  /** how long the walk home has been making no progress (wall-blocked) */
+  returnStuckFor: number;
 };
 
 export type CampPhase = "PENDING" | "AVAILABLE" | "COMBAT" | "CLEARED" | "RESPAWNING";
@@ -90,6 +92,14 @@ export type Camp = {
   respawnIn: number;
 };
 
+/** Per-camp HUD view: phase, respawn countdown and how many crawlers are left. */
+export type CampStatus = {
+  id: number;
+  phase: CampPhase;
+  respawnIn: number;
+  mobsAlive: number;
+  mobsTotal: number;
+};
 
 export type ProjectileKind = "basic" | "q";
 
@@ -136,14 +146,8 @@ export type Effect = {
   color?: string;
 };
 
-
 export type MatchPhase =
-  | "COUNTDOWN"
-  | "PLAYING"
-  | "CORE_EVENT"
-  | "SUDDEN_DEATH"
-  | "PLAYER_DEAD"
-  | "RESULTS";
+  "COUNTDOWN" | "PLAYING" | "CORE_EVENT" | "SUDDEN_DEATH" | "PLAYER_DEAD" | "RESULTS";
 
 export type CoreState = {
   active: boolean;
@@ -166,8 +170,11 @@ export type Snapshot = {
   /** player's upgrade levels */
   upgrades: Record<UpgradeKind, number>;
   core: CoreState;
+  /** left-to-right camp state, so the HUD never has to read engine internals */
+  camps: CampStatus[];
+  /** the player is being chased/attacked by a mob, or the enemy fighter is in range */
+  inCombat: boolean;
   safeRadius: number | null;
   winner: Team | null;
   announcement: string | null;
-
 };
