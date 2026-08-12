@@ -30,21 +30,41 @@ export function render(
   ctx.scale(zoom, zoom);
   ctx.translate(-cam.x, -cam.y);
 
-  drawFloor(ctx);
+  drawFloor(ctx, engine.time);
   drawCamps(ctx, engine);
   drawCore(ctx, engine);
   drawWalls(ctx);
   drawEffectsUnder(ctx, engine);
   drawAimIndicator(ctx, engine);
-  for (const m of engine.mobs) if (m.alive) drawMob(ctx, m);
+  for (const m of engine.mobs) if (m.alive) drawMob(ctx, m, engine.time);
 
-  drawFighter(ctx, engine.enemy, "#fb7185");
-  drawFighter(ctx, engine.player, "#38bdf8");
+  drawFighter(ctx, engine.enemy, "#fb7185", "#7f1d3a");
+  drawFighter(ctx, engine.player, "#38bdf8", "#0e4a6e");
+
   drawProjectiles(ctx, engine);
   drawEffectsOver(ctx, engine);
   drawSafeZone(ctx, engine);
 
   ctx.restore();
+
+  // screen-space grade: vignette + overdrive tint (cosmetic only)
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  const vig = ctx.createRadialGradient(viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.35, viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.78);
+  vig.addColorStop(0, "rgba(0,0,0,0)");
+  vig.addColorStop(1, "rgba(2,3,8,0.72)");
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, viewW, viewH);
+  if (engine.player.alive && engine.player.ultActiveFor > 0) {
+    const k = 0.1 + 0.06 * Math.sin(Date.now() / 90);
+    const og = ctx.createRadialGradient(viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.25, viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.7);
+    og.addColorStop(0, "rgba(251,191,36,0)");
+    og.addColorStop(1, `rgba(251,191,36,${k})`);
+    ctx.fillStyle = og;
+    ctx.fillRect(0, 0, viewW, viewH);
+  }
+  ctx.restore();
+
 
   if (C.debug) {
     ctx.save();
@@ -87,43 +107,129 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, engine: GameEngine, fps
 }
 
 
-function drawFloor(ctx: CanvasRenderingContext2D) {
-  const g = ctx.createRadialGradient(C.arena.width / 2, C.arena.height / 2, 100, C.arena.width / 2, C.arena.height / 2, 1000);
-  g.addColorStop(0, "#131a2c");
-  g.addColorStop(1, "#0a0c16");
+function drawFloor(ctx: CanvasRenderingContext2D, time: number) {
+  const W = C.arena.width;
+  const H = C.arena.height;
+  const cx = W / 2;
+  const cy = H / 2;
+
+  const g = ctx.createRadialGradient(cx, cy, 80, cx, cy, Math.max(W, H) * 0.75);
+  g.addColorStop(0, "#151a30");
+  g.addColorStop(0.55, "#0c0f1e");
+  g.addColorStop(1, "#05060d");
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, C.arena.width, C.arena.height);
+  ctx.fillRect(0, 0, W, H);
 
-  ctx.strokeStyle = "rgba(56,189,248,0.06)";
-  ctx.lineWidth = 2;
-  for (let x = 0; x <= C.arena.width; x += 80) {
-    ctx.beginPath();
+  // fine weave texture — two offset grids read as dark stone tiling
+  ctx.save();
+  ctx.strokeStyle = "rgba(125,211,252,0.035)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = 0; x <= W; x += 40) {
     ctx.moveTo(x, 0);
-    ctx.lineTo(x, C.arena.height);
-    ctx.stroke();
+    ctx.lineTo(x, H);
   }
-  for (let y = 0; y <= C.arena.height; y += 80) {
-    ctx.beginPath();
+  for (let y = 0; y <= H; y += 40) {
     ctx.moveTo(0, y);
-    ctx.lineTo(C.arena.width, y);
+    ctx.lineTo(W, y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = "rgba(139,92,246,0.06)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = 0; x <= W; x += 160) {
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, H);
+  }
+  for (let y = 0; y <= H; y += 160) {
+    ctx.moveTo(0, y);
+    ctx.lineTo(W, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // central magic composition: slow counter-rotating rune rings
+  ctx.save();
+  ctx.translate(cx, cy);
+  const breathe = 0.5 + 0.5 * Math.sin(time * 0.7);
+  ctx.strokeStyle = `rgba(139,92,246,${0.1 + breathe * 0.06})`;
+  ctx.lineWidth = 2;
+  for (const r of [230, 340, 470]) {
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.stroke();
   }
-  ctx.strokeStyle = "rgba(125,211,252,0.35)";
-  ctx.lineWidth = 6;
-  ctx.strokeRect(0, 0, C.arena.width, C.arena.height);
-
-  // spawn pads
-  for (const [pad, color] of [
-    [C.arena.spawnA, "rgba(56,189,248,0.18)"],
-    [C.arena.spawnB, "rgba(251,113,133,0.18)"],
-  ] as const) {
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(pad.x, pad.y, 70, 0, Math.PI * 2);
-    ctx.fill();
+  ctx.rotate(time * 0.05);
+  ctx.strokeStyle = `rgba(56,189,248,${0.12 + breathe * 0.08})`;
+  ctx.lineWidth = 3;
+  ctx.setLineDash([28, 46]);
+  ctx.beginPath();
+  ctx.arc(0, 0, 300, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.rotate(-time * 0.09);
+  ctx.strokeStyle = "rgba(139,92,246,0.16)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    const fn = i === 0 ? "moveTo" : "lineTo";
+    ctx[fn](Math.cos(a) * 400, Math.sin(a) * 400);
   }
+  ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
 
+  // boundary: inner falloff + double neon edge
+  ctx.save();
+  const edge = ctx.createLinearGradient(0, 0, 0, 120);
+  edge.addColorStop(0, "rgba(56,189,248,0.10)");
+  edge.addColorStop(1, "rgba(56,189,248,0)");
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, W, 120);
+  ctx.save();
+  ctx.translate(0, H);
+  ctx.scale(1, -1);
+  ctx.fillStyle = edge;
+  ctx.fillRect(0, 0, W, 120);
+  ctx.restore();
+  ctx.shadowColor = "rgba(56,189,248,0.8)";
+  ctx.shadowBlur = 26;
+  ctx.strokeStyle = "rgba(125,211,252,0.55)";
+  ctx.lineWidth = 5;
+  ctx.strokeRect(0, 0, W, H);
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(139,92,246,0.35)";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(14, 14, W - 28, H - 28);
+  ctx.restore();
+
+  // spawn pads — glowing sigils
+  for (const [pad, hue] of [
+    [C.arena.spawnA, "56,189,248"],
+    [C.arena.spawnB, "251,113,133"],
+  ] as const) {
+    ctx.save();
+    ctx.translate(pad.x, pad.y);
+    const pg = ctx.createRadialGradient(0, 0, 6, 0, 0, 78);
+    pg.addColorStop(0, `rgba(${hue},0.22)`);
+    pg.addColorStop(1, `rgba(${hue},0)`);
+    ctx.fillStyle = pg;
+    ctx.beginPath();
+    ctx.arc(0, 0, 78, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.rotate(time * 0.25);
+    ctx.strokeStyle = `rgba(${hue},0.4)`;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([14, 18]);
+    ctx.beginPath();
+    ctx.arc(0, 0, 56, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
+
 
 /** Subtle camp state indicators: available / in combat / cleared / respawning. */
 function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
@@ -149,6 +255,29 @@ function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     ctx.fill();
     ctx.stroke();
     ctx.setLineDash([]);
+
+    // magical ground markings — purely decorative, no gameplay meaning
+    ctx.save();
+    ctx.translate(camp.pos.x, camp.pos.y);
+    ctx.globalAlpha = camp.phase === "PENDING" ? 0.25 : 0.6;
+    ctx.strokeStyle = style.stroke;
+    ctx.lineWidth = 1.5;
+    ctx.rotate(engine.time * 0.15);
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const fn = i === 0 ? "moveTo" : "lineTo";
+      ctx[fn](Math.cos(a) * camp.radius * 0.62, Math.sin(a) * camp.radius * 0.62);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.rotate(-engine.time * 0.35);
+    ctx.beginPath();
+    ctx.arc(0, 0, camp.radius * 0.38, 0, Math.PI * 2);
+    ctx.setLineDash([8, 14]);
+    ctx.stroke();
+    ctx.restore();
+
 
     const label =
       camp.phase === "COMBAT"
@@ -184,17 +313,37 @@ function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
 }
 
 function drawWalls(ctx: CanvasRenderingContext2D) {
+  // Purely cosmetic: identical rect geometry, richer shading. Collision untouched.
   for (const w of C.arena.walls) {
-    ctx.fillStyle = "#232d45";
+    ctx.save();
+    // grounded shadow
+    ctx.fillStyle = "rgba(0,0,0,0.45)";
+    ctx.fillRect(w.x + 4, w.y + 6, w.w, w.h);
+
+    const g = ctx.createLinearGradient(w.x, w.y, w.x, w.y + w.h);
+    g.addColorStop(0, "#2a3555");
+    g.addColorStop(0.35, "#1c2440");
+    g.addColorStop(1, "#111726");
+    ctx.fillStyle = g;
     ctx.fillRect(w.x, w.y, w.w, w.h);
-    // readable top edge highlight
-    ctx.fillStyle = "rgba(125,211,252,0.15)";
-    ctx.fillRect(w.x, w.y, w.w, 5);
-    ctx.strokeStyle = "rgba(125,211,252,0.5)";
+
+    // engraved inner line
+    ctx.strokeStyle = "rgba(139,92,246,0.25)";
+    ctx.lineWidth = 1;
+    ctx.strokeRect(w.x + 6, w.y + 6, Math.max(0, w.w - 12), Math.max(0, w.h - 12));
+
+    // neon crest
+    ctx.fillStyle = "rgba(125,211,252,0.22)";
+    ctx.fillRect(w.x, w.y, w.w, 4);
+    ctx.shadowColor = "rgba(56,189,248,0.7)";
+    ctx.shadowBlur = 14;
+    ctx.strokeStyle = "rgba(125,211,252,0.6)";
     ctx.lineWidth = 2;
     ctx.strokeRect(w.x, w.y, w.w, w.h);
+    ctx.restore();
   }
 }
+
 
 function drawCore(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   const p = engine.corePos;
@@ -272,37 +421,78 @@ function drawAimIndicator(ctx: CanvasRenderingContext2D, engine: GameEngine) {
 }
 
 function healthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, ratio: number, color: string) {
-  ctx.fillStyle = "rgba(0,0,0,0.6)";
-  ctx.fillRect(x - w / 2, y, w, 6);
+  const h = 6;
+  ctx.save();
+  ctx.fillStyle = "rgba(3,6,14,0.8)";
+  ctx.fillRect(x - w / 2 - 1, y - 1, w + 2, h + 2);
+  ctx.fillStyle = "rgba(148,163,184,0.18)";
+  ctx.fillRect(x - w / 2, y, w, h);
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
   ctx.fillStyle = color;
-  ctx.fillRect(x - w / 2, y, w * Math.max(0, ratio), 6);
+  ctx.fillRect(x - w / 2, y, w * Math.max(0, ratio), h);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = "rgba(255,255,255,0.35)";
+  ctx.fillRect(x - w / 2, y, w * Math.max(0, ratio), 2);
+  ctx.restore();
 }
 
-function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string) {
+
+function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string, dark: string) {
   if (!f.alive) return;
+  const now = Date.now();
   ctx.save();
   ctx.translate(f.pos.x, f.pos.y);
+
+  // contact shadow — separates the silhouette from the floor
+  ctx.save();
+  ctx.scale(1, 0.45);
+  ctx.beginPath();
+  ctx.arc(0, f.radius * 1.5, f.radius * 1.05, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.45)";
+  ctx.fill();
+  ctx.restore();
+
   if (f.ultActiveFor > 0) {
-    const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 90);
+    // OVERDRIVE: layered amber aura + rotating blades
+    const pulse = 0.5 + 0.5 * Math.sin(now / 90);
+    const ag = ctx.createRadialGradient(0, 0, f.radius, 0, 0, f.radius + 44 + pulse * 8);
+    ag.addColorStop(0, "rgba(251,191,36,0.32)");
+    ag.addColorStop(1, "rgba(251,191,36,0)");
+    ctx.fillStyle = ag;
     ctx.beginPath();
-    ctx.arc(0, 0, f.radius + 14 + pulse * 4, 0, Math.PI * 2);
-    ctx.fillStyle = "rgba(251,191,36,0.2)";
+    ctx.arc(0, 0, f.radius + 46 + pulse * 8, 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(251,191,36,0.9)";
+    ctx.save();
+    ctx.rotate(now / 320);
+    ctx.strokeStyle = `rgba(253,224,71,${0.65 + pulse * 0.3})`;
+    ctx.shadowColor = "rgba(251,191,36,0.9)";
+    ctx.shadowBlur = 20;
     ctx.lineWidth = 3;
+    ctx.setLineDash([18, 14]);
+    ctx.beginPath();
+    ctx.arc(0, 0, f.radius + 16 + pulse * 4, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.restore();
   }
   if (f.invulnFor > 0 || f.dashFor > 0) {
     // i-frame indicator: rotating dashed shield so dodges are unmistakable
     ctx.save();
-    ctx.rotate(Date.now() / 220);
+    ctx.rotate(now / 220);
     ctx.beginPath();
     ctx.arc(0, 0, f.radius + 11, 0, Math.PI * 2);
     ctx.strokeStyle = "rgba(163,230,53,0.95)";
     ctx.shadowColor = "rgba(163,230,53,0.9)";
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = 18;
     ctx.setLineDash([9, 7]);
     ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.rotate(-now / 110);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.5;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(0, 0, f.radius + 17, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
@@ -314,33 +504,99 @@ function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string) {
     ctx.stroke();
   }
 
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 22;
+  // team glow pool
+  const glow = ctx.createRadialGradient(0, 0, f.radius * 0.6, 0, 0, f.radius + 26);
+  glow.addColorStop(0, `${color}55`);
+  glow.addColorStop(1, `${color}00`);
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, 0, f.radius + 26, 0, Math.PI * 2);
+  ctx.fill();
+
+  // body: shaded orb with hard neon rim for a clean silhouette
+  ctx.save();
+  ctx.rotate(f.facing);
+  const body = ctx.createRadialGradient(-f.radius * 0.35, -f.radius * 0.4, f.radius * 0.15, 0, 0, f.radius);
+  if (f.hitFlash > 0) {
+    body.addColorStop(0, "#ffffff");
+    body.addColorStop(1, "#ffffff");
+  } else {
+    body.addColorStop(0, "#f8fbff");
+    body.addColorStop(0.45, color);
+    body.addColorStop(1, dark);
+  }
   ctx.beginPath();
   ctx.arc(0, 0, f.radius, 0, Math.PI * 2);
-  ctx.fillStyle = f.hitFlash > 0 ? "#ffffff" : f.invulnFor > 0 ? "#e2e8f0" : color;
+  ctx.fillStyle = body;
   ctx.fill();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 18;
+  ctx.lineWidth = 2.5;
+  ctx.strokeStyle = "rgba(240,249,255,0.9)";
+  ctx.stroke();
   ctx.shadowBlur = 0;
 
-  ctx.rotate(f.facing);
+  // shoulder plates read as a facing-aware silhouette
+  ctx.beginPath();
+  ctx.moveTo(-f.radius * 0.2, -f.radius * 1.05);
+  ctx.lineTo(f.radius * 0.55, -f.radius * 0.55);
+  ctx.lineTo(f.radius * 0.55, f.radius * 0.55);
+  ctx.lineTo(-f.radius * 0.2, f.radius * 1.05);
+  ctx.closePath();
+  ctx.fillStyle = `${dark}cc`;
+  ctx.fill();
+  ctx.strokeStyle = `${color}`;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // weapon prong
   ctx.beginPath();
   ctx.moveTo(f.radius - 2, 0);
-  ctx.lineTo(f.radius + 16, 0);
-  ctx.strokeStyle = "#e2e8f0";
+  ctx.lineTo(f.radius + 18, 0);
+  ctx.strokeStyle = "#f1f5f9";
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 12;
   ctx.lineWidth = 5;
+  ctx.lineCap = "round";
   ctx.stroke();
+  ctx.restore();
   ctx.restore();
 
   healthBar(ctx, f.pos.x, f.pos.y - f.radius - 18, 60, f.hp / f.maxHp, color);
 }
 
-function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
+
+function drawMob(ctx: CanvasRenderingContext2D, m: Mob, time: number) {
   const guardian = m.kind === "guardian";
   const hostile = m.state === "CHASE" || m.state === "ATTACK" || m.state === "AGGRO";
+  const accent = guardian ? "#f59e0b" : hostile ? "#facc15" : "#a3e635";
+  const bob = Math.sin(time * 3 + m.pos.x * 0.01) * 2;
+
+  // contact shadow keeps neutrals grounded in the arena
   ctx.save();
   ctx.translate(m.pos.x, m.pos.y);
-  ctx.shadowColor = guardian ? "#f59e0b" : hostile ? "#facc15" : "#65a30d";
-  ctx.shadowBlur = guardian ? 26 : hostile ? 14 : 8;
+  ctx.save();
+  ctx.scale(1, 0.4);
+  ctx.beginPath();
+  ctx.arc(0, m.radius * 1.8, m.radius * 0.95, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.translate(0, bob);
+  // corrupted aura
+  const ag = ctx.createRadialGradient(0, 0, m.radius * 0.4, 0, 0, m.radius * 2.1);
+  ag.addColorStop(0, `${accent}33`);
+  ag.addColorStop(1, `${accent}00`);
+  ctx.fillStyle = ag;
+  ctx.beginPath();
+  ctx.arc(0, 0, m.radius * 2.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  ctx.rotate(guardian ? time * 0.4 : time * (hostile ? 1.3 : 0.5));
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = guardian ? 26 : hostile ? 18 : 10;
   ctx.beginPath();
   if (guardian) {
     ctx.moveTo(0, -m.radius);
@@ -358,12 +614,30 @@ function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
     }
     ctx.closePath();
   }
-  ctx.fillStyle = m.hitFlash > 0 ? "#ffffff" : guardian ? "#f59e0b" : hostile ? "#a16207" : "#4d7c0f";
+  const body = ctx.createRadialGradient(0, 0, m.radius * 0.15, 0, 0, m.radius);
+  if (m.hitFlash > 0) {
+    body.addColorStop(0, "#ffffff");
+    body.addColorStop(1, "#ffffff");
+  } else {
+    body.addColorStop(0, guardian ? "#fde68a" : hostile ? "#fde047" : "#65a30d");
+    body.addColorStop(1, guardian ? "#78350f" : hostile ? "#713f12" : "#1a2e05");
+  }
+  ctx.fillStyle = body;
   ctx.fill();
   ctx.lineWidth = 2;
-  ctx.strokeStyle = hostile ? "#facc15" : "#84cc16";
+  ctx.strokeStyle = accent;
   ctx.stroke();
   ctx.restore();
+
+  // glowing inner core
+  ctx.beginPath();
+  ctx.arc(0, 0, m.radius * (0.28 + 0.06 * Math.sin(time * 6)), 0, Math.PI * 2);
+  ctx.fillStyle = m.hitFlash > 0 ? "#ffffff" : accent;
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 14;
+  ctx.fill();
+  ctx.restore();
+
 
   if (!guardian && m.state === "AGGRO") {
     ctx.save();
@@ -390,7 +664,10 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     if (p.trail.length > 1) {
       ctx.save();
       ctx.strokeStyle = glow;
+      ctx.shadowColor = glow;
+      ctx.shadowBlur = isQ ? 22 : 10;
       ctx.lineCap = "round";
+
       for (let i = 1; i < p.trail.length; i++) {
         const a = p.trail[i - 1]!;
         const b = p.trail[i]!;
@@ -439,31 +716,55 @@ function drawEffectsUnder(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const e of engine.effects) {
     const t = e.life / e.maxLife;
     if (e.kind === "dash-trail") {
+      const c = e.color ?? "#38bdf8";
+      const r = (e.radius ?? 20) * (0.4 + t * 0.6);
+      const g = ctx.createRadialGradient(e.pos.x, e.pos.y, 0, e.pos.x, e.pos.y, r);
+      g.addColorStop(0, `${c}88`);
+      g.addColorStop(1, `${c}00`);
+      ctx.globalAlpha = t * 0.8;
+      ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 20) * (0.4 + t * 0.6), 0, Math.PI * 2);
-      ctx.fillStyle = e.color ?? "#38bdf8";
-      ctx.globalAlpha = t * 0.35;
+      ctx.arc(e.pos.x, e.pos.y, r, 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalAlpha = t * 0.5;
+      ctx.strokeStyle = c;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, r * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.globalAlpha = 1;
     }
     if (e.kind === "telegraph-line" && e.dir) {
       // charge-up lane: fills toward the caster's aim during the windup
       const charge = 1 - t;
       const len = e.radius ?? 400;
+      const c = e.color ?? "#a78bfa";
       ctx.save();
       ctx.translate(e.pos.x, e.pos.y);
       ctx.rotate(Math.atan2(e.dir.y, e.dir.x));
-      ctx.fillStyle = `${e.color ?? "#a78bfa"}22`;
+      ctx.fillStyle = `${c}1f`;
       ctx.fillRect(0, -18, len, 36);
-      ctx.fillStyle = `${e.color ?? "#a78bfa"}55`;
+      const fill = ctx.createLinearGradient(0, 0, len * Math.max(charge, 0.001), 0);
+      fill.addColorStop(0, `${c}88`);
+      fill.addColorStop(1, `${c}33`);
+      ctx.fillStyle = fill;
       ctx.fillRect(0, -18, len * charge, 36);
-      ctx.strokeStyle = e.color ?? "#a78bfa";
+      // leading edge marker
+      ctx.shadowColor = c;
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = c;
+      ctx.fillRect(len * charge - 2, -18, 4, 36);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = c;
       ctx.globalAlpha = 0.45 + 0.55 * charge;
       ctx.lineWidth = 2;
+      ctx.setLineDash([14, 10]);
       ctx.strokeRect(0, -18, len, 36);
+      ctx.setLineDash([]);
       ctx.globalAlpha = 1;
       ctx.restore();
     }
+
 
     if (e.kind === "shockwave") {
       ctx.beginPath();

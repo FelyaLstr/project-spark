@@ -19,7 +19,10 @@
  */
 
 @theme inline {
+  --animate-scale-in: scale-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slam-in: slam-in 0.4s cubic-bezier(0.16, 1, 0.3, 1);
   --radius-sm: calc(var(--radius) - 4px);
+
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
@@ -141,5 +144,29 @@
   body {
     background-color: var(--color-background);
     color: var(--color-foreground);
+  }
+}
+
+@keyframes scale-in {
+  0% {
+    opacity: 0;
+    transform: scale(1.6);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slam-in {
+  0% {
+    opacity: 0;
+    transform: scale(1.35) translateY(-8px);
+    filter: blur(6px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+    filter: blur(0);
   }
 }

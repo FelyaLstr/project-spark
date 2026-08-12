@@ -177,16 +177,16 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
 
       {/* Top HUD */}
-      <div className="pointer-events-none absolute inset-x-0 top-0 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-        <div className="absolute left-3 top-3 rounded-full border border-border/60 bg-card/70 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-muted-foreground shadow-sm">
+      <div className="pointer-events-none absolute inset-x-0 top-0 bg-gradient-to-b from-background/85 via-background/40 to-transparent p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="absolute left-3 top-3 rounded-full border border-border/50 bg-card/60 px-2.5 py-1 text-[10px] uppercase tracking-[0.25em] text-muted-foreground backdrop-blur-sm">
           <span className="mr-2">FPS</span>
           <span className="font-mono text-sm font-bold text-foreground">{fpsDisplay}</span>
         </div>
         <div className="flex items-center gap-3">
           <Bar label="YOU" ratio={p ? p.hp / p.maxHp : 1} value={p ? Math.ceil(p.hp) : 0} tone="primary" />
-          <div className="shrink-0 text-center">
-            <div className="font-mono text-lg font-bold text-foreground">{hud ? fmt(hud.timeLeft) : "--:--"}</div>
-            <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
+          <div className="shrink-0 rounded-lg border border-border/50 bg-card/60 px-2.5 py-1 text-center backdrop-blur-sm">
+            <div className="font-mono text-lg font-black tabular-nums text-foreground">{hud ? fmt(hud.timeLeft) : "--:--"}</div>
+            <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
               {hud?.core.active ? "CORE ACTIVE" : "CORE IDLE"}
             </div>
           </div>
@@ -198,14 +198,25 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
             reverse
           />
         </div>
-        <div className="mt-2 flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
-          <span className="rounded bg-card/70 px-2 py-1">ULT {Math.floor(ultReady * 100)}%</span>
+        <div className="mt-2 flex items-center justify-center gap-2 text-[10px] font-bold uppercase tracking-[0.18em]">
+          <span
+            className={`rounded-full border px-2.5 py-1 ${
+              ultReady >= 1
+                ? "border-accent/70 bg-accent/20 text-accent shadow-[0_0_16px_color-mix(in_oklab,var(--color-accent)_45%,transparent)]"
+                : "border-border/50 bg-card/60 text-muted-foreground"
+            }`}
+          >
+            ULT {Math.floor(ultReady * 100)}%
+          </span>
           {C.features.essenceUpgrades && (
-            <span className="rounded bg-cyan-400/15 px-2 py-1 font-bold text-cyan-300">ESSENCE {hud?.essence ?? 0}</span>
+            <span className="rounded-full border border-cyan-400/50 bg-cyan-400/15 px-2.5 py-1 text-cyan-200 shadow-[0_0_14px_rgba(34,211,238,0.25)]">
+              ESSENCE {hud?.essence ?? 0}
+            </span>
           )}
           {p && p.ultActiveFor > 0 && <Chip>OVERDRIVE</Chip>}
         </div>
       </div>
+
 
       {/* Temporary upgrades (match-only) */}
       {C.features.essenceUpgrades && hud && (
@@ -254,18 +265,26 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       {/* Announcement / countdown */}
       {hud?.phase === "COUNTDOWN" && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="text-7xl font-black text-primary drop-shadow-[0_0_30px_var(--color-primary)]">
+          <div className="absolute size-72 animate-[ping_1s_ease-out_infinite] rounded-full border border-primary/25" />
+          <span
+            key={Math.ceil(hud.countdown)}
+            className="animate-scale-in text-8xl font-black tracking-tighter text-primary drop-shadow-[0_0_40px_var(--color-primary)]"
+          >
             {Math.ceil(hud.countdown) || "GO"}
           </span>
         </div>
       )}
       {hud?.announcement && hud.phase !== "COUNTDOWN" && (
         <div className="pointer-events-none absolute inset-x-0 top-1/3 text-center">
-          <span className="text-2xl font-black uppercase tracking-[0.25em] text-primary drop-shadow-[0_0_20px_var(--color-primary)]">
+          <span
+            key={hud.announcement}
+            className="animate-scale-in inline-block border-y border-primary/40 px-6 py-2 text-3xl font-black uppercase tracking-[0.3em] text-primary drop-shadow-[0_0_28px_var(--color-primary)]"
+          >
             {hud.announcement}
           </span>
         </div>
       )}
+
 
       {/* Bottom controls */}
       <div className="absolute inset-x-0 bottom-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
@@ -379,8 +398,13 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
 }
 
 function Chip({ children }: { children: React.ReactNode }) {
-  return <span className="rounded bg-primary/15 px-2 py-1 text-primary">{children}</span>;
+  return (
+    <span className="animate-pulse rounded-full border border-accent/70 bg-accent/25 px-2.5 py-1 text-accent shadow-[0_0_18px_color-mix(in_oklab,var(--color-accent)_55%,transparent)]">
+      {children}
+    </span>
+  );
 }
+
 
 function Bar({
   label,
@@ -395,17 +419,29 @@ function Bar({
   tone: "primary" | "destructive";
   reverse?: boolean;
 }) {
+  const pct = Math.max(0, Math.min(1, ratio)) * 100;
+  const glow = tone === "primary" ? "var(--color-primary)" : "var(--color-destructive)";
   return (
     <div className="min-w-0 flex-1">
-      <div className={`flex text-[10px] uppercase tracking-widest text-muted-foreground ${reverse ? "justify-end" : ""}`}>
+      <div
+        className={`flex text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground ${reverse ? "justify-end" : ""}`}
+      >
         <span className="truncate">{label} · {value}</span>
       </div>
-      <div className={`mt-1 h-2.5 w-full overflow-hidden rounded-full bg-card/80 ${reverse ? "flex justify-end" : ""}`}>
+      <div
+        className={`mt-1 h-3 w-full overflow-hidden rounded-full border border-border/50 bg-background/70 shadow-[inset_0_1px_3px_rgba(0,0,0,0.7)] ${
+          reverse ? "flex justify-end" : ""
+        }`}
+      >
         <div
-          className={`h-full ${tone === "primary" ? "bg-primary" : "bg-destructive"}`}
-          style={{ width: `${Math.max(0, Math.min(1, ratio)) * 100}%` }}
+          className={`h-full ${tone === "primary" ? "bg-primary" : "bg-destructive"} transition-[width] duration-150`}
+          style={{
+            width: `${pct}%`,
+            boxShadow: `0 0 14px color-mix(in oklab, ${glow} 65%, transparent)`,
+          }}
         />
       </div>
     </div>
   );
 }
+
