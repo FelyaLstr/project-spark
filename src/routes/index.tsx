@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArenaScreen, type MatchResult } from "@/components/game/ArenaScreen";
-import { matchService } from "@/services/matchService";
+import { MatchAbortedError, matchService } from "@/services/matchService";
 import { initTelegram } from "@/services/telegram";
+import { reportLovableError } from "@/lib/lovable-error-reporting";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -29,15 +30,43 @@ type Screen = "MENU" | "MATCHMAKING" | "ARENA" | "RESULTS";
 
 type Profile = { name: string; rating: number; wins: number; losses: number; streak: number };
 
+const PROFILE_KEY = "va_profile";
+
+const defaultProfile = (): Profile => ({
+  name: "Vanguard",
+  rating: 1000,
+  wins: 0,
+  losses: 0,
+  streak: 0,
+});
+
+const isProfile = (value: unknown): value is Profile => {
+  if (typeof value !== "object" || value === null) return false;
+  const { name, rating, wins, losses, streak } = value as Partial<Profile>;
+  return (
+    typeof name === "string" &&
+    [rating, wins, losses, streak].every((n) => typeof n === "number" && Number.isFinite(n))
+  );
+};
+
 const loadProfile = (): Profile => {
-  if (typeof window === "undefined") return { name: "Vanguard", rating: 1000, wins: 0, losses: 0, streak: 0 };
+  if (typeof window === "undefined") return defaultProfile();
+  let raw: string | null = null;
   try {
-    const raw = localStorage.getItem("va_profile");
-    if (raw) return JSON.parse(raw) as Profile;
-  } catch {
-    /* ignore */
+    raw = localStorage.getItem(PROFILE_KEY);
+  } catch (error) {
+    console.warn("Could not read the saved profile from localStorage", error);
+    return defaultProfile();
   }
-  return { name: "Vanguard", rating: 1000, wins: 0, losses: 0, streak: 0 };
+  if (raw === null) return defaultProfile();
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (isProfile(parsed)) return parsed;
+    console.warn("Saved profile has an unexpected shape; falling back to a fresh profile");
+  } catch (error) {
+    console.warn("Saved profile is not valid JSON; falling back to a fresh profile", error);
+  }
+  return defaultProfile();
 };
 
 function App() {
@@ -46,6 +75,8 @@ function App() {
   const [result, setResult] = useState<MatchResult | null>(null);
   const [profile, setProfile] = useState<Profile>(() => loadProfile());
   const [matchKey, setMatchKey] = useState(0);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchAbort = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const tg = initTelegram();
@@ -53,18 +84,51 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") localStorage.setItem("va_profile", JSON.stringify(profile));
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+    } catch (error) {
+      // Quota exhaustion or a storage-blocking browser mode must not take the
+      // whole app down, but the lost progress should be traceable.
+      console.warn("Could not persist the profile to localStorage", error);
+    }
   }, [profile]);
 
+  useEffect(() => () => searchAbort.current?.abort(), []);
+
   const startSearch = useCallback(async () => {
+    searchAbort.current?.abort();
+    const controller = new AbortController();
+    searchAbort.current = controller;
+    setSearchError(null);
     setScreen("MATCHMAKING");
-    const ticket = await matchService.findMatch();
-    setOpponent(ticket.opponentName);
-    setMatchKey((k) => k + 1);
-    setScreen("ARENA");
+    try {
+      const ticket = await matchService.findMatch(controller.signal);
+      if (controller.signal.aborted) return;
+      setOpponent(ticket.opponentName);
+      setMatchKey((k) => k + 1);
+      setScreen("ARENA");
+    } catch (error) {
+      if (controller.signal.aborted || error instanceof MatchAbortedError) return;
+      console.error(error);
+      reportLovableError(error, { source: "matchmaking" });
+      setSearchError(
+        error instanceof Error ? error.message : "Matchmaking failed. Please try again.",
+      );
+      setScreen("MENU");
+    } finally {
+      if (searchAbort.current === controller) searchAbort.current = null;
+    }
+  }, []);
+
+  const cancelSearch = useCallback(() => {
+    searchAbort.current?.abort();
+    searchAbort.current = null;
+    setScreen("MENU");
   }, []);
 
   const practice = () => {
+    setSearchError(null);
     setOpponent("Training Dummy");
     setMatchKey((k) => k + 1);
     setScreen("ARENA");
@@ -92,17 +156,38 @@ function App() {
     <main className="relative min-h-[100dvh] overflow-hidden bg-background px-5 py-8 text-foreground">
       <div className="pointer-events-none absolute -top-32 left-1/2 size-96 -translate-x-1/2 rounded-full bg-primary/20 blur-[120px]" />
       <div className="relative mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col">
-        {screen === "MENU" && <Menu profile={profile} onPlay={startSearch} onPractice={practice} />}
-        {screen === "MATCHMAKING" && <Searching onCancel={() => setScreen("MENU")} />}
+        {screen === "MENU" && (
+          <Menu
+            profile={profile}
+            error={searchError}
+            onPlay={() => void startSearch()}
+            onPractice={practice}
+          />
+        )}
+        {screen === "MATCHMAKING" && <Searching onCancel={cancelSearch} />}
         {screen === "RESULTS" && result && (
-          <Results result={result} onRematch={startSearch} onMenu={() => setScreen("MENU")} />
+          <Results
+            result={result}
+            onRematch={() => void startSearch()}
+            onMenu={() => setScreen("MENU")}
+          />
         )}
       </div>
     </main>
   );
 }
 
-function Menu({ profile, onPlay, onPractice }: { profile: Profile; onPlay: () => void; onPractice: () => void }) {
+function Menu({
+  profile,
+  error,
+  onPlay,
+  onPractice,
+}: {
+  profile: Profile;
+  error: string | null;
+  onPlay: () => void;
+  onPractice: () => void;
+}) {
   return (
     <>
       <header className="text-center">
@@ -128,6 +213,15 @@ function Menu({ profile, onPlay, onPractice }: { profile: Profile; onPlay: () =>
           <Stat label="Streak" value={profile.streak} />
         </div>
       </section>
+
+      {error && (
+        <p
+          role="alert"
+          className="mt-6 rounded-xl border border-destructive/50 bg-destructive/10 px-3 py-2 text-center text-xs text-destructive"
+        >
+          {error}
+        </p>
+      )}
 
       <button
         onClick={onPlay}

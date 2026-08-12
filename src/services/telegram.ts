@@ -23,8 +23,10 @@ export function initTelegram(): TelegramProfile {
     wa.expand();
     wa.setHeaderColor?.("#07080f");
     wa.setBackgroundColor?.("#07080f");
-  } catch {
-    /* ignore */
+  } catch (error) {
+    // A failing host bridge must not block the game, but it should be visible:
+    // the theming/expand calls are what break first inside Telegram clients.
+    console.warn("Telegram WebApp initialization failed; continuing without host chrome", error);
   }
   const u = wa.initDataUnsafe?.user;
   return { name: u?.first_name || u?.username || "Telegram Player", isTelegram: true };

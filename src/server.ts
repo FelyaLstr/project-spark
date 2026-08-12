@@ -11,8 +11,14 @@ let serverEntryPromise: Promise<ServerEntry> | undefined;
 
 async function getServerEntry(): Promise<ServerEntry> {
   if (!serverEntryPromise) {
+    // Caching a rejected promise would make one failed import poison every later
+    // request, so drop the cache and let the next request retry the load.
     serverEntryPromise = import("@tanstack/react-start/server-entry").then(
       (m) => (m.default ?? m) as ServerEntry,
+      (error: unknown) => {
+        serverEntryPromise = undefined;
+        throw error;
+      },
     );
   }
   return serverEntryPromise;

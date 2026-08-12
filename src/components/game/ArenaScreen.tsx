@@ -5,6 +5,7 @@ import { InputController } from "@/game/input/InputController";
 import { GAME_CONFIG } from "@/game/config/gameConfig";
 import { clamp } from "@/game/core/math";
 import type { AbilityKey, Snapshot, UpgradeKind } from "@/game/core/types";
+import { reportLovableError } from "@/lib/lovable-error-reporting";
 import { Joystick } from "./Joystick";
 import { AbilityButton } from "./AbilityButton";
 
@@ -52,6 +53,7 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   const [flash, setFlash] = useState<UpgradeKind | null>(null);
   const [fpsDisplay, setFpsDisplay] = useState(60);
   const [isPortrait, setIsPortrait] = useState(() => (typeof window !== "undefined" ? window.innerHeight >= window.innerWidth : false));
+  const [fatalError, setFatalError] = useState<string | null>(null);
   const finished = useRef(false);
 
 
@@ -59,7 +61,15 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+    if (!ctx) {
+      const error = new Error(
+        "Could not acquire a 2D canvas context; the arena cannot be rendered",
+      );
+      console.error(error);
+      reportLovableError(error, { source: "arena_canvas_context" });
+      setFatalError(error.message);
+      return;
+    }
 
     let raf = 0;
     let last = performance.now();
@@ -84,7 +94,24 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
     const ro = new ResizeObserver(resize);
     ro.observe(canvas);
 
+    // A throw inside the frame body would otherwise stop the scheduling chain and
+    // leave the arena frozen on its last painted frame with nothing reported.
     const loop = (now: number) => {
+      try {
+        step(now);
+      } catch (error) {
+        cancelAnimationFrame(raf);
+        console.error(error);
+        reportLovableError(error, { source: "arena_frame_loop" });
+        setFatalError(
+          error instanceof Error ? error.message : "The match loop stopped unexpectedly",
+        );
+        return;
+      }
+      raf = requestAnimationFrame(loop);
+    };
+
+    const step = (now: number) => {
       const dt = (now - last) / 1000;
       last = now;
       if (dt > 0) fps += (1 / dt - fps) * 0.1;
@@ -118,7 +145,6 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
           coreCaptures: p.stats.coreCaptures,
         });
       }
-      raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
 
@@ -175,6 +201,24 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   return (
     <div className="relative h-[100dvh] w-full touch-none overflow-hidden overscroll-none bg-background">
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
+
+      {fatalError && (
+        <div
+          role="alert"
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-background/95 px-6 text-center"
+        >
+          <h2 className="text-xl font-black uppercase tracking-[0.2em] text-destructive">
+            Match stopped
+          </h2>
+          <p className="max-w-sm text-sm text-muted-foreground">{fatalError}</p>
+          <button
+            onClick={onQuit}
+            className="rounded-xl border border-border/70 bg-card/70 px-4 py-2 text-xs font-bold uppercase tracking-[0.2em] text-foreground"
+          >
+            Return to menu
+          </button>
+        </div>
+      )}
 
       {/* Top HUD */}
       <div className="pointer-events-none absolute inset-x-0 top-0 p-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
