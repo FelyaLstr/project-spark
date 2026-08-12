@@ -47,6 +47,25 @@ export function render(
 
   ctx.restore();
 
+  // screen-space grade: vignette + overdrive tint (cosmetic only)
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  const vig = ctx.createRadialGradient(viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.35, viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.78);
+  vig.addColorStop(0, "rgba(0,0,0,0)");
+  vig.addColorStop(1, "rgba(2,3,8,0.72)");
+  ctx.fillStyle = vig;
+  ctx.fillRect(0, 0, viewW, viewH);
+  if (engine.player.alive && engine.player.ultActiveFor > 0) {
+    const k = 0.1 + 0.06 * Math.sin(Date.now() / 90);
+    const og = ctx.createRadialGradient(viewW / 2, viewH / 2, Math.min(viewW, viewH) * 0.25, viewW / 2, viewH / 2, Math.max(viewW, viewH) * 0.7);
+    og.addColorStop(0, "rgba(251,191,36,0)");
+    og.addColorStop(1, `rgba(251,191,36,${k})`);
+    ctx.fillStyle = og;
+    ctx.fillRect(0, 0, viewW, viewH);
+  }
+  ctx.restore();
+
+
   if (C.debug) {
     ctx.save();
     ctx.scale(dpr, dpr);
