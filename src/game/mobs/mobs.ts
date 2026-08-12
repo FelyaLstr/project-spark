@@ -1,18 +1,20 @@
 import { GAME_CONFIG } from "../config/gameConfig";
-import type { Camp, Mob } from "../core/types";
+import { createIdSource } from "../core/ids";
+import type { Camp, Mob, MobKind } from "../core/types";
 import type { Vec } from "../core/math";
 
-let idc = 0;
-const nid = (p: string) => `${p}_${++idc}`;
+const ids = createIdSource();
 
-export const resetMobIds = () => {
-  idc = 0;
-};
+export const resetMobIds = () => ids.reset();
 
-export function makeMob(kind: "crawler" | "guardian", home: Vec, campId: number): Mob {
-  const c = kind === "crawler" ? GAME_CONFIG.mobs.crawler : GAME_CONFIG.mobs.guardian;
+/** Stats for a mob kind. Every system reads mob tuning through here. */
+export const mobConfig = (kind: MobKind) =>
+  kind === "crawler" ? GAME_CONFIG.mobs.crawler : GAME_CONFIG.mobs.guardian;
+
+export function makeMob(kind: MobKind, home: Vec, campId: number): Mob {
+  const c = mobConfig(kind);
   return {
-    id: nid(kind),
+    id: ids.next(kind),
     kind,
     campId,
     state: "IDLE",

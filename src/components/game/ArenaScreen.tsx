@@ -3,10 +3,10 @@ import { GameEngine } from "@/game/combat/GameEngine";
 import { render } from "@/game/rendering/renderer";
 import { InputController } from "@/game/input/InputController";
 import { GAME_CONFIG } from "@/game/config/gameConfig";
-import { clamp } from "@/game/core/math";
+import { getCamera } from "@/game/rendering/camera";
 import type { AbilityKey, Snapshot, UpgradeKind } from "@/game/core/types";
 import { Joystick } from "./Joystick";
-import { AbilityButton } from "./AbilityButton";
+import { ControlPad, type AimHandlers } from "./ControlPad";
 
 const C = GAME_CONFIG;
 
@@ -30,27 +30,6 @@ const UPGRADES: { kind: UpgradeKind; label: string }[] = [
 ];
 
 const fmt = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
-
-function getCamera(viewW: number, viewH: number, playerPos: { x: number; y: number }) {
-  const zoom = Math.max(0.52, Math.min(0.95, viewW / 900));
-  const halfW = viewW / 2 / zoom;
-  const halfH = viewH / 2 / zoom;
-  return {
-    zoom,
-    cam: {
-      x: clamp(
-        playerPos.x,
-        Math.min(halfW, C.arena.width / 2),
-        Math.max(C.arena.width - halfW, C.arena.width / 2),
-      ),
-      y: clamp(
-        playerPos.y,
-        Math.min(halfH, C.arena.height / 2),
-        Math.max(C.arena.height - halfH, C.arena.height / 2),
-      ),
-    },
-  };
-}
 
 export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -176,6 +155,11 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   const aimEnd = () => {
     engine.aimPreview = { active: false, ability: null };
   };
+  const dragAim: AimHandlers = {
+    onAim: (v) => input.setAim(v),
+    onAimStart: aimStart,
+    onAimEnd: aimEnd,
+  };
   const p = hud?.player;
   const ultReady = p ? p.ultCharge / C.abilities.r.chargeMax : 0;
 
@@ -286,103 +270,21 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
 
       {/* Bottom controls */}
       <div className="absolute inset-x-0 bottom-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        {isPortrait ? (
-          <div className="flex items-end justify-between gap-3">
-            <Joystick
-              onChange={(v) => {
-                input.setMove(v);
-                input.setAim(v);
-              }}
-            />
-            <div className="flex items-end gap-3">
-              <div className="flex flex-col items-center gap-3">
-                <AbilityButton
-                  label="R"
-                  ability="r"
-                  cooldown={0}
-                  maxCooldown={0}
-                  charge={ultReady}
-                  onCast={cast}
-                  aimable={false}
-                />
-                <AbilityButton
-                  label="W"
-                  ability="w"
-                  cooldown={p?.cooldowns.w ?? 0}
-                  maxCooldown={C.abilities.w.cooldown}
-                  onCast={cast}
-                />
-              </div>
-              <div className="flex flex-col items-center gap-3">
-                <AbilityButton
-                  label="Q"
-                  ability="q"
-                  cooldown={p?.cooldowns.q ?? 0}
-                  maxCooldown={C.abilities.q.cooldown}
-                  onCast={cast}
-                />
-                <AbilityButton
-                  label="ATK"
-                  ability="basic"
-                  big
-                  cooldown={p?.cooldowns.basic ?? 0}
-                  maxCooldown={C.vanguard.attackCooldown}
-                  onCast={cast}
-                />
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-end justify-between">
-            <Joystick onChange={(v) => input.setMove(v)} />
-            <div className="flex items-end gap-3">
-              <div className="flex flex-col items-center gap-3">
-                <AbilityButton
-                  label="R"
-                  ability="r"
-                  cooldown={0}
-                  maxCooldown={0}
-                  charge={ultReady}
-                  onCast={cast}
-                  aimable={false}
-                />
-                <AbilityButton
-                  label="W"
-                  ability="w"
-                  cooldown={p?.cooldowns.w ?? 0}
-                  maxCooldown={C.abilities.w.cooldown}
-                  onAim={(v) => input.setAim(v)}
-                  onAimStart={aimStart}
-                  onAimEnd={aimEnd}
-                  onCast={cast}
-                />
-              </div>
-              <div className="flex flex-col items-center gap-3">
-                <AbilityButton
-                  label="Q"
-                  ability="q"
-                  cooldown={p?.cooldowns.q ?? 0}
-                  maxCooldown={C.abilities.q.cooldown}
-                  onAim={(v) => input.setAim(v)}
-                  onAimStart={aimStart}
-                  onAimEnd={aimEnd}
-                  onCast={cast}
-                />
-                <AbilityButton
-                  label="ATK"
-                  ability="basic"
-                  big
-                  cooldown={p?.cooldowns.basic ?? 0}
-                  maxCooldown={C.vanguard.attackCooldown}
-                  onAim={(v) => input.setAim(v)}
-                  onAimStart={aimStart}
-                  onAimEnd={aimEnd}
-                  onCast={cast}
-                />
-              </div>
-            </div>
-          </div>
-        )}
+        <div className={`flex items-end justify-between ${isPortrait ? "gap-3" : ""}`}>
+          <Joystick
+            onChange={(v) => {
+              input.setMove(v);
+              // portrait has no drag-aim, so the stick also steers the aim
+              if (isPortrait) input.setAim(v);
+            }}
+          />
+          <ControlPad
+            cooldowns={p?.cooldowns}
+            ultReady={ultReady}
+            onCast={cast}
+            {...(isPortrait ? {} : { aim: dragAim })}
+          />
+        </div>
       </div>
 
       <button

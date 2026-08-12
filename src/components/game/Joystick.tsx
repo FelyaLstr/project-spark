@@ -1,4 +1,5 @@
 import { useRef, useState, type PointerEvent as RPointerEvent } from "react";
+import { capturePointer, clampedPointerOffset, releasePointer } from "@/lib/pointer";
 
 type Props = { onChange: (v: { x: number; y: number }) => void };
 
@@ -10,23 +11,13 @@ export function Joystick({ onChange }: Props) {
   const handle = (e: RPointerEvent<HTMLDivElement>) => {
     const el = ref.current;
     if (!el) return;
-    const r = el.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    const cy = r.top + r.height / 2;
-    const max = r.width / 2;
-    let dx = e.clientX - cx;
-    let dy = e.clientY - cy;
-    const d = Math.hypot(dx, dy);
-    if (d > max) {
-      dx = (dx / d) * max;
-      dy = (dy / d) * max;
-    }
-    setKnob({ x: dx, y: dy });
-    onChange({ x: dx / max, y: dy / max });
+    const { x, y, radius } = clampedPointerOffset(el, e);
+    setKnob({ x, y });
+    onChange({ x: x / radius, y: y / radius });
   };
 
   const end = (e: RPointerEvent<HTMLDivElement>) => {
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    releasePointer(e);
     setActive(false);
     setKnob({ x: 0, y: 0 });
     onChange({ x: 0, y: 0 });
@@ -36,7 +27,7 @@ export function Joystick({ onChange }: Props) {
     <div
       ref={ref}
       onPointerDown={(e) => {
-        e.currentTarget.setPointerCapture(e.pointerId);
+        capturePointer(e);
         setActive(true);
         handle(e);
       }}

@@ -1,5 +1,14 @@
 import { GAME_CONFIG } from "../config/gameConfig";
-import { dist, norm, scale, sub, type Rect, type Vec } from "../core/math";
+import {
+  closestPointOnRect,
+  dist,
+  nearest,
+  norm,
+  scale,
+  sub,
+  type Rect,
+  type Vec,
+} from "../core/math";
 import type { Camp, Fighter, InputCommand, Mob, Projectile, UpgradeKind } from "../core/types";
 
 export type AIDifficulty = "easy" | "normal" | "hard";
@@ -56,20 +65,6 @@ function leadAim(
     y: target.pos.y + target.vel.y * t * leadFactor,
   };
   return norm(sub(predicted, self.pos));
-}
-
-function nearestMob(mobs: Mob[], p: Vec, maxDist = Infinity): Mob | null {
-  let best: Mob | null = null;
-  let bd = maxDist;
-  for (const m of mobs) {
-    if (!m.alive) continue;
-    const d = dist(m.pos, p);
-    if (d < bd) {
-      bd = d;
-      best = m;
-    }
-  }
-  return best;
 }
 
 /**
@@ -157,12 +152,12 @@ export function createAIController(
 
       // pick what we are actually shooting at this frame
       const campMob = camp
-        ? nearestMob(
+        ? nearest(
             w.mobs.filter((m) => m.campId === camp.id),
             self.pos,
           )
         : null;
-      const closeMob = nearestMob(w.mobs, self.pos, 200);
+      const closeMob = nearest(w.mobs, self.pos, 200);
       const attackMob =
         mode === "FARM" ? (campMob ?? closeMob) : mode === "CONTEST" ? null : closeMob;
       const engaged: AimTarget =
@@ -198,8 +193,7 @@ export function createAIController(
 
       // avoid hugging walls: nudge away from any wall we are close to
       for (const wall of w.walls) {
-        const cx = Math.max(wall.x, Math.min(self.pos.x, wall.x + wall.w));
-        const cy = Math.max(wall.y, Math.min(self.pos.y, wall.y + wall.h));
+        const { x: cx, y: cy } = closestPointOnRect(self.pos, wall);
         const d = Math.hypot(self.pos.x - cx, self.pos.y - cy);
         if (d < self.radius + 26) {
           const away = norm({ x: self.pos.x - cx, y: self.pos.y - cy });

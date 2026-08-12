@@ -1,7 +1,7 @@
 import { GAME_CONFIG } from "../config/gameConfig";
-import { add, dist, norm, scale, sub, type Vec } from "../core/math";
+import { add, decay, dist, nearest, norm, scale, sub, type Vec } from "../core/math";
 import type { Camp, Effect, Fighter, Mob } from "../core/types";
-import { spawnCampMobs } from "./mobs";
+import { mobConfig, spawnCampMobs } from "./mobs";
 
 const C = GAME_CONFIG;
 
@@ -16,8 +16,6 @@ export type MobContext = {
   later: (seconds: number, fn: () => void) => void;
 };
 
-const cfgOf = (m: Mob) => (m.kind === "crawler" ? C.mobs.crawler : C.mobs.guardian);
-
 /**
  * Neutral mob simulation. Runs inside the engine's fixed game loop — never React.
  * State machine: IDLE -> AGGRO -> CHASE -> ATTACK -> RETURN -> IDLE (or DEAD).
@@ -26,13 +24,13 @@ export function updateMobs(ctx: MobContext, dt: number) {
   updateCamps(ctx, dt);
 
   for (const m of ctx.mobs) {
-    m.hitFlash = Math.max(0, m.hitFlash - dt);
+    m.hitFlash = decay(m.hitFlash, dt);
     if (!m.alive) continue;
 
-    const cfg = cfgOf(m);
-    m.attackTimer = Math.max(0, m.attackTimer - dt);
-    m.telegraphFor = Math.max(0, m.telegraphFor - dt);
-    m.aggroFor = Math.max(0, m.aggroFor - dt);
+    const cfg = mobConfig(m.kind);
+    m.attackTimer = decay(m.attackTimer, dt);
+    m.telegraphFor = decay(m.telegraphFor, dt);
+    m.aggroFor = decay(m.aggroFor, dt);
 
     const live = ctx.fighters.filter((f) => f.alive);
     let target = live.find((f) => f.id === m.target) ?? null;
@@ -145,7 +143,7 @@ function updateCamps(ctx: MobContext, dt: number) {
     }
 
     if (camp.phase === "CLEARED" || camp.phase === "RESPAWNING") {
-      camp.respawnIn = Math.max(0, camp.respawnIn - dt);
+      camp.respawnIn = decay(camp.respawnIn, dt);
       camp.phase = camp.respawnIn > C.mobs.respawnSeconds - 2 ? "CLEARED" : "RESPAWNING";
       if (camp.respawnIn <= 0) {
         for (let i = ctx.mobs.length - 1; i >= 0; i--)
@@ -175,19 +173,6 @@ function updateCamps(ctx: MobContext, dt: number) {
     const fighting = campMobs.some((m) => m.alive && (m.state === "CHASE" || m.state === "ATTACK"));
     camp.phase = contested || fighting ? "COMBAT" : "AVAILABLE";
   }
-}
-
-function nearest(fs: Fighter[], p: Vec): Fighter | null {
-  let best: Fighter | null = null;
-  let bd = Infinity;
-  for (const f of fs) {
-    const d = dist(f.pos, p);
-    if (d < bd) {
-      bd = d;
-      best = f;
-    }
-  }
-  return best;
 }
 
 function step(ctx: MobContext, m: Mob, goal: Vec, speed: number, dt: number) {
