@@ -182,14 +182,28 @@ function Results({
   onMenu: () => void;
 }) {
   return (
-    <div className="flex flex-1 flex-col justify-center">
-      <h2
-        className={`text-center text-4xl font-black uppercase tracking-[0.2em] ${
-          result.won ? "text-primary" : "text-destructive"
+    <div className="relative flex flex-1 flex-col justify-center">
+      <div
+        className={`pointer-events-none absolute left-1/2 top-16 size-72 -translate-x-1/2 rounded-full blur-[110px] ${
+          result.won ? "bg-primary/30" : "bg-destructive/25"
         }`}
-      >
-        {result.won ? "Victory" : "Defeat"}
-      </h2>
+      />
+      <div className="relative text-center">
+        <div className="text-[10px] uppercase tracking-[0.5em] text-muted-foreground">Match result</div>
+        <h2
+          className={`animate-slam-in mt-2 text-5xl font-black uppercase tracking-[0.18em] ${
+            result.won
+              ? "text-primary drop-shadow-[0_0_36px_var(--color-primary)]"
+              : "text-destructive drop-shadow-[0_0_30px_var(--color-destructive)]"
+          }`}
+        >
+          {result.won ? "Victory" : "Defeat"}
+        </h2>
+        <div
+          className={`mx-auto mt-3 h-px w-40 ${result.won ? "bg-primary/60" : "bg-destructive/60"}`}
+        />
+      </div>
+
       <div className="mt-8 space-y-2 rounded-2xl border border-border/60 bg-card/60 p-4">
         <Row label="Damage dealt" value={result.damageDealt} />
         <Row label="Damage received" value={result.damageTaken} />
