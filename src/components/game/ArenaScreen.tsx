@@ -38,8 +38,16 @@ function getCamera(viewW: number, viewH: number, playerPos: { x: number; y: numb
   return {
     zoom,
     cam: {
-      x: clamp(playerPos.x, Math.min(halfW, C.arena.width / 2), Math.max(C.arena.width - halfW, C.arena.width / 2)),
-      y: clamp(playerPos.y, Math.min(halfH, C.arena.height / 2), Math.max(C.arena.height - halfH, C.arena.height / 2)),
+      x: clamp(
+        playerPos.x,
+        Math.min(halfW, C.arena.width / 2),
+        Math.max(C.arena.width - halfW, C.arena.width / 2),
+      ),
+      y: clamp(
+        playerPos.y,
+        Math.min(halfH, C.arena.height / 2),
+        Math.max(C.arena.height - halfH, C.arena.height / 2),
+      ),
     },
   };
 }
@@ -51,9 +59,10 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   const [hud, setHud] = useState<Snapshot | null>(null);
   const [flash, setFlash] = useState<UpgradeKind | null>(null);
   const [fpsDisplay, setFpsDisplay] = useState(60);
-  const [isPortrait, setIsPortrait] = useState(() => (typeof window !== "undefined" ? window.innerHeight >= window.innerWidth : false));
+  const [isPortrait, setIsPortrait] = useState(() =>
+    typeof window !== "undefined" ? window.innerHeight >= window.innerWidth : false,
+  );
   const finished = useRef(false);
-
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -97,7 +106,6 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       render(ctx, engine, canvas.clientWidth, canvas.clientHeight, dpr, fps);
-
 
       hudTimer -= dt;
       if (hudTimer <= 0) {
@@ -171,7 +179,6 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
   const p = hud?.player;
   const ultReady = p ? p.ultCharge / C.abilities.r.chargeMax : 0;
 
-
   return (
     <div className="relative h-[100dvh] w-full touch-none overflow-hidden overscroll-none bg-background">
       <canvas ref={canvasRef} className="absolute inset-0 size-full touch-none" />
@@ -183,9 +190,16 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
           <span className="font-mono text-sm font-bold text-foreground">{fpsDisplay}</span>
         </div>
         <div className="flex items-center gap-3">
-          <Bar label="YOU" ratio={p ? p.hp / p.maxHp : 1} value={p ? Math.ceil(p.hp) : 0} tone="primary" />
+          <Bar
+            label="YOU"
+            ratio={p ? p.hp / p.maxHp : 1}
+            value={p ? Math.ceil(p.hp) : 0}
+            tone="primary"
+          />
           <div className="shrink-0 text-center">
-            <div className="font-mono text-lg font-bold text-foreground">{hud ? fmt(hud.timeLeft) : "--:--"}</div>
+            <div className="font-mono text-lg font-bold text-foreground">
+              {hud ? fmt(hud.timeLeft) : "--:--"}
+            </div>
             <div className="text-[10px] uppercase tracking-widest text-muted-foreground">
               {hud?.core.active ? "CORE ACTIVE" : "CORE IDLE"}
             </div>
@@ -201,7 +215,9 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
         <div className="mt-2 flex items-center justify-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
           <span className="rounded bg-card/70 px-2 py-1">ULT {Math.floor(ultReady * 100)}%</span>
           {C.features.essenceUpgrades && (
-            <span className="rounded bg-cyan-400/15 px-2 py-1 font-bold text-cyan-300">ESSENCE {hud?.essence ?? 0}</span>
+            <span className="rounded bg-cyan-400/15 px-2 py-1 font-bold text-cyan-300">
+              ESSENCE {hud?.essence ?? 0}
+            </span>
           )}
           {p && p.ultActiveFor > 0 && <Chip>OVERDRIVE</Chip>}
         </div>
@@ -232,7 +248,9 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
                       : "border-border/50 bg-card/50 opacity-55"
                 }`}
               >
-                <div className="text-[10px] font-black uppercase tracking-wider text-foreground">{u.label}</div>
+                <div className="text-[10px] font-black uppercase tracking-wider text-foreground">
+                  {u.label}
+                </div>
                 <div className="mt-1 flex justify-center gap-0.5">
                   {Array.from({ length: C.upgrades.maxLevel }).map((_, i) => (
                     <span
@@ -249,7 +267,6 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
           })}
         </div>
       )}
-
 
       {/* Announcement / countdown */}
       {hud?.phase === "COUNTDOWN" && (
@@ -397,10 +414,16 @@ function Bar({
 }) {
   return (
     <div className="min-w-0 flex-1">
-      <div className={`flex text-[10px] uppercase tracking-widest text-muted-foreground ${reverse ? "justify-end" : ""}`}>
-        <span className="truncate">{label} · {value}</span>
+      <div
+        className={`flex text-[10px] uppercase tracking-widest text-muted-foreground ${reverse ? "justify-end" : ""}`}
+      >
+        <span className="truncate">
+          {label} · {value}
+        </span>
       </div>
-      <div className={`mt-1 h-2.5 w-full overflow-hidden rounded-full bg-card/80 ${reverse ? "flex justify-end" : ""}`}>
+      <div
+        className={`mt-1 h-2.5 w-full overflow-hidden rounded-full bg-card/80 ${reverse ? "flex justify-end" : ""}`}
+      >
         <div
           className={`h-full ${tone === "primary" ? "bg-primary" : "bg-destructive"}`}
           style={{ width: `${Math.max(0, Math.min(1, ratio)) * 100}%` }}

@@ -88,7 +88,9 @@ export function AbilityButton({
       <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center leading-none">
         <span>{label}</span>
         {cooldown > 0 && (
-          <span className="mt-0.5 font-mono text-[11px] font-semibold text-foreground/80">{cooldown.toFixed(1)}</span>
+          <span className="mt-0.5 font-mono text-[11px] font-semibold text-foreground/80">
+            {cooldown.toFixed(1)}
+          </span>
         )}
         {charge !== undefined && charge < 1 && cooldown <= 0 && (
           <span className="mt-0.5 font-mono text-[11px] font-semibold text-foreground/70">

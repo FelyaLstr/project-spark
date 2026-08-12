@@ -17,8 +17,14 @@ export function render(
   const halfH = viewH / 2 / zoom;
   const raw = engine.player.pos;
   const cam = {
-    x: Math.min(Math.max(raw.x, Math.min(halfW, C.arena.width / 2)), Math.max(C.arena.width - halfW, C.arena.width / 2)),
-    y: Math.min(Math.max(raw.y, Math.min(halfH, C.arena.height / 2)), Math.max(C.arena.height - halfH, C.arena.height / 2)),
+    x: Math.min(
+      Math.max(raw.x, Math.min(halfW, C.arena.width / 2)),
+      Math.max(C.arena.width - halfW, C.arena.width / 2),
+    ),
+    y: Math.min(
+      Math.max(raw.y, Math.min(halfH, C.arena.height / 2)),
+      Math.max(C.arena.height - halfH, C.arena.height / 2),
+    ),
   };
 
   ctx.save();
@@ -75,7 +81,6 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, engine: GameEngine, fps
     ...engine.mobs
       .filter((m) => m.alive)
       .map((m) => `  ${m.id} ${m.state} hp ${m.hp.toFixed(0)}/${m.maxHp} @${v(m.pos.x, m.pos.y)}`),
-
   ];
   ctx.font = "12px ui-monospace, SFMono-Regular, monospace";
   ctx.textAlign = "left";
@@ -86,9 +91,15 @@ function drawDebugOverlay(ctx: CanvasRenderingContext2D, engine: GameEngine, fps
   lines.forEach((l, i) => ctx.fillText(l, 16, 25 + i * 15));
 }
 
-
 function drawFloor(ctx: CanvasRenderingContext2D) {
-  const g = ctx.createRadialGradient(C.arena.width / 2, C.arena.height / 2, 100, C.arena.width / 2, C.arena.height / 2, 1000);
+  const g = ctx.createRadialGradient(
+    C.arena.width / 2,
+    C.arena.height / 2,
+    100,
+    C.arena.width / 2,
+    C.arena.height / 2,
+    1000,
+  );
   g.addColorStop(0, "#131a2c");
   g.addColorStop(1, "#0a0c16");
   ctx.fillStyle = g;
@@ -122,7 +133,6 @@ function drawFloor(ctx: CanvasRenderingContext2D) {
     ctx.arc(pad.x, pad.y, 70, 0, Math.PI * 2);
     ctx.fill();
   }
-
 }
 
 /** Subtle camp state indicators: available / in combat / cleared / respawning. */
@@ -132,7 +142,11 @@ function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const camp of engine.camps) {
     const style =
       camp.phase === "COMBAT"
-        ? { stroke: `rgba(251,191,36,${0.35 + pulse * 0.35})`, fill: "rgba(251,191,36,0.05)", dash: [] as number[] }
+        ? {
+            stroke: `rgba(251,191,36,${0.35 + pulse * 0.35})`,
+            fill: "rgba(251,191,36,0.05)",
+            dash: [] as number[],
+          }
         : camp.phase === "AVAILABLE"
           ? { stroke: "rgba(163,230,53,0.32)", fill: "rgba(163,230,53,0.05)", dash: [] }
           : camp.phase === "PENDING"
@@ -180,7 +194,6 @@ function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     }
     ctx.restore();
   }
-
 }
 
 function drawWalls(ctx: CanvasRenderingContext2D) {
@@ -234,7 +247,13 @@ function drawAimIndicator(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   if (!f.alive) return;
   const aiming = engine.aimPreview.active;
   const ability = engine.aimPreview.ability;
-  const len = aiming ? (ability === "q" ? C.abilities.q.range : ability === "w" ? C.abilities.w.distance : C.vanguard.attackRange) : 90;
+  const len = aiming
+    ? ability === "q"
+      ? C.abilities.q.range
+      : ability === "w"
+        ? C.abilities.w.distance
+        : C.vanguard.attackRange
+    : 90;
   const dir = { x: Math.cos(f.facing), y: Math.sin(f.facing) };
 
   ctx.save();
@@ -271,7 +290,14 @@ function drawAimIndicator(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   void dir;
 }
 
-function healthBar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, ratio: number, color: string) {
+function healthBar(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  ratio: number,
+  color: string,
+) {
   ctx.fillStyle = "rgba(0,0,0,0.6)";
   ctx.fillRect(x - w / 2, y, w, 6);
   ctx.fillStyle = color;
@@ -358,7 +384,8 @@ function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
     }
     ctx.closePath();
   }
-  ctx.fillStyle = m.hitFlash > 0 ? "#ffffff" : guardian ? "#f59e0b" : hostile ? "#a16207" : "#4d7c0f";
+  ctx.fillStyle =
+    m.hitFlash > 0 ? "#ffffff" : guardian ? "#f59e0b" : hostile ? "#a16207" : "#4d7c0f";
   ctx.fill();
   ctx.lineWidth = 2;
   ctx.strokeStyle = hostile ? "#facc15" : "#84cc16";
@@ -374,16 +401,34 @@ function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
     ctx.restore();
   }
 
-  healthBar(ctx, m.pos.x, m.pos.y - m.radius - 14, guardian ? 90 : 36, m.hp / m.maxHp, guardian ? "#f59e0b" : "#a3e635");
+  healthBar(
+    ctx,
+    m.pos.x,
+    m.pos.y - m.radius - 14,
+    guardian ? 90 : 36,
+    m.hp / m.maxHp,
+    guardian ? "#f59e0b" : "#a3e635",
+  );
 }
-
 
 function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const p of engine.projectiles) {
     const isQ = p.kind === "q";
     // ATK = thin cyan/rose dart, Q = fat violet/amber orb. Never the same read.
-    const core = isQ ? (p.team === "A" ? "#ddd6fe" : "#fed7aa") : p.team === "A" ? "#a5f3fc" : "#fecdd3";
-    const glow = isQ ? (p.team === "A" ? "#8b5cf6" : "#f97316") : p.team === "A" ? "#22d3ee" : "#f43f5e";
+    const core = isQ
+      ? p.team === "A"
+        ? "#ddd6fe"
+        : "#fed7aa"
+      : p.team === "A"
+        ? "#a5f3fc"
+        : "#fecdd3";
+    const glow = isQ
+      ? p.team === "A"
+        ? "#8b5cf6"
+        : "#f97316"
+      : p.team === "A"
+        ? "#22d3ee"
+        : "#f43f5e";
     const ang = Math.atan2(p.dir.y, p.dir.x);
 
     // trail
@@ -433,7 +478,6 @@ function drawProjectiles(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     ctx.restore();
   }
 }
-
 
 function drawEffectsUnder(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const e of engine.effects) {
@@ -487,7 +531,15 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       ctx.globalAlpha = t;
       ctx.fillStyle = e.color ?? "#67e8f9";
       ctx.beginPath();
-      ctx.ellipse(0, 0, (e.radius ?? 16) * (1.2 - t * 0.4), (e.radius ?? 16) * 0.45, 0, 0, Math.PI * 2);
+      ctx.ellipse(
+        0,
+        0,
+        (e.radius ?? 16) * (1.2 - t * 0.4),
+        (e.radius ?? 16) * 0.45,
+        0,
+        0,
+        Math.PI * 2,
+      );
       ctx.fill();
       ctx.globalAlpha = 1;
       ctx.restore();
@@ -495,7 +547,13 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     if (e.kind === "slash" && e.dir) {
       const a = Math.atan2(e.dir.y, e.dir.x);
       ctx.beginPath();
-      ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 120) * 0.85, a - C.vanguard.attackArc, a + C.vanguard.attackArc);
+      ctx.arc(
+        e.pos.x,
+        e.pos.y,
+        (e.radius ?? 120) * 0.85,
+        a - C.vanguard.attackArc,
+        a + C.vanguard.attackArc,
+      );
       ctx.strokeStyle = `${e.color ?? "#38bdf8"}`;
       ctx.globalAlpha = t;
       ctx.lineWidth = 10;
@@ -545,7 +603,9 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     }
     if (e.kind === "text" && e.text) {
       const dodge = e.text === "DODGE";
-      ctx.font = dodge ? "bold 20px ui-sans-serif, system-ui" : "bold 24px ui-sans-serif, system-ui";
+      ctx.font = dodge
+        ? "bold 20px ui-sans-serif, system-ui"
+        : "bold 24px ui-sans-serif, system-ui";
       ctx.textAlign = "center";
       ctx.globalAlpha = Math.min(1, t * 1.6);
       ctx.lineWidth = 4;
@@ -556,7 +616,6 @@ function drawEffectsOver(ctx: CanvasRenderingContext2D, engine: GameEngine) {
       ctx.fillText(e.text, e.pos.x, y);
       ctx.globalAlpha = 1;
     }
-
   }
 }
 

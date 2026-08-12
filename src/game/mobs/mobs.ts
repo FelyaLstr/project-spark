@@ -60,5 +60,9 @@ export function spawnCampMobs(camp: Camp): Mob[] {
 }
 
 export function spawnGuardian(): Mob {
-  return makeMob("guardian", { x: GAME_CONFIG.arena.width / 2, y: GAME_CONFIG.arena.height / 2 - 260 }, -1);
+  return makeMob(
+    "guardian",
+    { x: GAME_CONFIG.arena.width / 2, y: GAME_CONFIG.arena.height / 2 - 260 },
+    -1,
+  );
 }

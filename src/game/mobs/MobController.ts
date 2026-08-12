@@ -91,7 +91,13 @@ export function updateMobs(ctx: MobContext, dt: number) {
     if (m.kind === "guardian") {
       m.telegraphFor = C.mobs.guardian.telegraph;
       const pos = { ...m.pos };
-      ctx.pushEffect({ kind: "shockwave", pos, radius: 120, life: C.mobs.guardian.telegraph, color: "#f59e0b" });
+      ctx.pushEffect({
+        kind: "shockwave",
+        pos,
+        radius: 120,
+        life: C.mobs.guardian.telegraph,
+        color: "#f59e0b",
+      });
       ctx.later(C.mobs.guardian.telegraph, () => {
         for (const f of ctx.fighters) {
           if (f.alive && dist(pos, f.pos) < 120 + f.radius) ctx.applyDamage(m, f, cfg.damage);
@@ -118,14 +124,22 @@ function updateCamps(ctx: MobContext, dt: number) {
     const alive = campMobs.some((m) => m.alive);
 
     if (camp.phase === "PENDING") {
-      const activated = ctx.fighters.some((f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campActivationRadius);
+      const activated = ctx.fighters.some(
+        (f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campActivationRadius,
+      );
       if (!activated) continue;
 
       camp.phase = "AVAILABLE";
       camp.respawnIn = 0;
       if (!campMobs.length) {
         ctx.mobs.push(...spawnCampMobs(camp));
-        ctx.pushEffect({ kind: "core-ring", pos: { ...camp.pos }, radius: camp.radius, life: 0.7, color: "#a3e635" });
+        ctx.pushEffect({
+          kind: "core-ring",
+          pos: { ...camp.pos },
+          radius: camp.radius,
+          life: 0.7,
+          color: "#a3e635",
+        });
       }
       continue;
     }
@@ -134,10 +148,17 @@ function updateCamps(ctx: MobContext, dt: number) {
       camp.respawnIn = Math.max(0, camp.respawnIn - dt);
       camp.phase = camp.respawnIn > C.mobs.respawnSeconds - 2 ? "CLEARED" : "RESPAWNING";
       if (camp.respawnIn <= 0) {
-        for (let i = ctx.mobs.length - 1; i >= 0; i--) if (ctx.mobs[i]!.campId === camp.id) ctx.mobs.splice(i, 1);
+        for (let i = ctx.mobs.length - 1; i >= 0; i--)
+          if (ctx.mobs[i]!.campId === camp.id) ctx.mobs.splice(i, 1);
         ctx.mobs.push(...spawnCampMobs(camp));
         camp.phase = "AVAILABLE";
-        ctx.pushEffect({ kind: "core-ring", pos: { ...camp.pos }, radius: camp.radius, life: 0.7, color: "#a3e635" });
+        ctx.pushEffect({
+          kind: "core-ring",
+          pos: { ...camp.pos },
+          radius: camp.radius,
+          life: 0.7,
+          color: "#a3e635",
+        });
       }
       continue;
     }
@@ -148,7 +169,9 @@ function updateCamps(ctx: MobContext, dt: number) {
       continue;
     }
 
-    const contested = ctx.fighters.some((f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campCombatRadius);
+    const contested = ctx.fighters.some(
+      (f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campCombatRadius,
+    );
     const fighting = campMobs.some((m) => m.alive && (m.state === "CHASE" || m.state === "ATTACK"));
     camp.phase = contested || fighting ? "COMBAT" : "AVAILABLE";
   }
