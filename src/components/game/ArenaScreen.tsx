@@ -398,8 +398,13 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
 }
 
 function Chip({ children }: { children: React.ReactNode }) {
-  return <span className="rounded bg-primary/15 px-2 py-1 text-primary">{children}</span>;
+  return (
+    <span className="animate-pulse rounded-full border border-accent/70 bg-accent/25 px-2.5 py-1 text-accent shadow-[0_0_18px_color-mix(in_oklab,var(--color-accent)_55%,transparent)]">
+      {children}
+    </span>
+  );
 }
+
 
 function Bar({
   label,
