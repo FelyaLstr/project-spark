@@ -237,6 +237,29 @@ function drawCamps(ctx: CanvasRenderingContext2D, engine: GameEngine) {
     ctx.stroke();
     ctx.setLineDash([]);
 
+    // magical ground markings — purely decorative, no gameplay meaning
+    ctx.save();
+    ctx.translate(camp.pos.x, camp.pos.y);
+    ctx.globalAlpha = camp.phase === "PENDING" ? 0.25 : 0.6;
+    ctx.strokeStyle = style.stroke;
+    ctx.lineWidth = 1.5;
+    ctx.rotate(engine.time * 0.15);
+    ctx.beginPath();
+    for (let i = 0; i < 3; i++) {
+      const a = (i / 3) * Math.PI * 2;
+      const fn = i === 0 ? "moveTo" : "lineTo";
+      ctx[fn](Math.cos(a) * camp.radius * 0.62, Math.sin(a) * camp.radius * 0.62);
+    }
+    ctx.closePath();
+    ctx.stroke();
+    ctx.rotate(-engine.time * 0.35);
+    ctx.beginPath();
+    ctx.arc(0, 0, camp.radius * 0.38, 0, Math.PI * 2);
+    ctx.setLineDash([8, 14]);
+    ctx.stroke();
+    ctx.restore();
+
+
     const label =
       camp.phase === "COMBAT"
         ? "COMBAT"
