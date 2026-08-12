@@ -524,13 +524,37 @@ function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string, d
 }
 
 
-function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
+function drawMob(ctx: CanvasRenderingContext2D, m: Mob, time: number) {
   const guardian = m.kind === "guardian";
   const hostile = m.state === "CHASE" || m.state === "ATTACK" || m.state === "AGGRO";
+  const accent = guardian ? "#f59e0b" : hostile ? "#facc15" : "#a3e635";
+  const bob = Math.sin(time * 3 + m.pos.x * 0.01) * 2;
+
+  // contact shadow keeps neutrals grounded in the arena
   ctx.save();
   ctx.translate(m.pos.x, m.pos.y);
-  ctx.shadowColor = guardian ? "#f59e0b" : hostile ? "#facc15" : "#65a30d";
-  ctx.shadowBlur = guardian ? 26 : hostile ? 14 : 8;
+  ctx.save();
+  ctx.scale(1, 0.4);
+  ctx.beginPath();
+  ctx.arc(0, m.radius * 1.8, m.radius * 0.95, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(0,0,0,0.4)";
+  ctx.fill();
+  ctx.restore();
+
+  ctx.translate(0, bob);
+  // corrupted aura
+  const ag = ctx.createRadialGradient(0, 0, m.radius * 0.4, 0, 0, m.radius * 2.1);
+  ag.addColorStop(0, `${accent}33`);
+  ag.addColorStop(1, `${accent}00`);
+  ctx.fillStyle = ag;
+  ctx.beginPath();
+  ctx.arc(0, 0, m.radius * 2.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.save();
+  ctx.rotate(guardian ? time * 0.4 : time * (hostile ? 1.3 : 0.5));
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = guardian ? 26 : hostile ? 18 : 10;
   ctx.beginPath();
   if (guardian) {
     ctx.moveTo(0, -m.radius);
@@ -548,12 +572,30 @@ function drawMob(ctx: CanvasRenderingContext2D, m: Mob) {
     }
     ctx.closePath();
   }
-  ctx.fillStyle = m.hitFlash > 0 ? "#ffffff" : guardian ? "#f59e0b" : hostile ? "#a16207" : "#4d7c0f";
+  const body = ctx.createRadialGradient(0, 0, m.radius * 0.15, 0, 0, m.radius);
+  if (m.hitFlash > 0) {
+    body.addColorStop(0, "#ffffff");
+    body.addColorStop(1, "#ffffff");
+  } else {
+    body.addColorStop(0, guardian ? "#fde68a" : hostile ? "#fde047" : "#65a30d");
+    body.addColorStop(1, guardian ? "#78350f" : hostile ? "#713f12" : "#1a2e05");
+  }
+  ctx.fillStyle = body;
   ctx.fill();
   ctx.lineWidth = 2;
-  ctx.strokeStyle = hostile ? "#facc15" : "#84cc16";
+  ctx.strokeStyle = accent;
   ctx.stroke();
   ctx.restore();
+
+  // glowing inner core
+  ctx.beginPath();
+  ctx.arc(0, 0, m.radius * (0.28 + 0.06 * Math.sin(time * 6)), 0, Math.PI * 2);
+  ctx.fillStyle = m.hitFlash > 0 ? "#ffffff" : accent;
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 14;
+  ctx.fill();
+  ctx.restore();
+
 
   if (!guardian && m.state === "AGGRO") {
     ctx.save();
