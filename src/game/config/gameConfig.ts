@@ -38,6 +38,8 @@ export const GAME_CONFIG = {
     countdownSeconds: 3,
     durationSeconds: 180,
     freezeOnDeath: 1.4,
+    /** seconds until a dead fighter respawns back at their spawn pad */
+    respawnSeconds: 3,
     suddenDeathShrinkPerSecond: 9,
     suddenDeathDps: 14,
     minSafeRadius: 180,
