@@ -254,18 +254,26 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
       {/* Announcement / countdown */}
       {hud?.phase === "COUNTDOWN" && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <span className="text-7xl font-black text-primary drop-shadow-[0_0_30px_var(--color-primary)]">
+          <div className="absolute size-72 animate-[ping_1s_ease-out_infinite] rounded-full border border-primary/25" />
+          <span
+            key={Math.ceil(hud.countdown)}
+            className="animate-scale-in text-8xl font-black tracking-tighter text-primary drop-shadow-[0_0_40px_var(--color-primary)]"
+          >
             {Math.ceil(hud.countdown) || "GO"}
           </span>
         </div>
       )}
       {hud?.announcement && hud.phase !== "COUNTDOWN" && (
         <div className="pointer-events-none absolute inset-x-0 top-1/3 text-center">
-          <span className="text-2xl font-black uppercase tracking-[0.25em] text-primary drop-shadow-[0_0_20px_var(--color-primary)]">
+          <span
+            key={hud.announcement}
+            className="animate-scale-in inline-block border-y border-primary/40 px-6 py-2 text-3xl font-black uppercase tracking-[0.3em] text-primary drop-shadow-[0_0_28px_var(--color-primary)]"
+          >
             {hud.announcement}
           </span>
         </div>
       )}
+
 
       {/* Bottom controls */}
       <div className="absolute inset-x-0 bottom-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
