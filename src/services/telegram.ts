@@ -14,6 +14,18 @@ function getWebApp(): TelegramWebApp | null {
 
 export type TelegramProfile = { name: string; isTelegram: boolean };
 
+const MAX_NAME_LENGTH = 32;
+
+// initDataUnsafe is unverified client-supplied data per Telegram's docs: usable
+// for cosmetics only, never for identity or authorization, and only after control
+// characters are stripped and the length is clamped.
+function sanitizeName(value: string | undefined): string {
+  return (value ?? "")
+    .replace(/[\p{C}]/gu, " ")
+    .trim()
+    .slice(0, MAX_NAME_LENGTH);
+}
+
 /** Safe no-op in a normal browser so local testing never needs Telegram. */
 export function initTelegram(): TelegramProfile {
   const wa = getWebApp();
@@ -27,5 +39,6 @@ export function initTelegram(): TelegramProfile {
     /* ignore */
   }
   const u = wa.initDataUnsafe?.user;
-  return { name: u?.first_name || u?.username || "Telegram Player", isTelegram: true };
+  const name = sanitizeName(u?.first_name) || sanitizeName(u?.username);
+  return { name: name || "Telegram Player", isTelegram: true };
 }
