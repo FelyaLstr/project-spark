@@ -313,6 +313,43 @@ describe("applyDamage", () => {
     expect(engine.phase).toBe("PLAYER_DEAD");
   });
 
+  it("ignores damage from a dead attacker", () => {
+    const engine = playing();
+    engine.enemy.alive = true;
+    engine.player.alive = false;
+    engine.applyDamage(engine.player, engine.enemy, 40);
+    expect(engine.enemy.hp).toBe(C.vanguard.maxHealth);
+    expect(engine.player.stats.damageDealt).toBe(0);
+  });
+
+  it("keeps the first death authoritative", () => {
+    const engine = playing();
+    engine.enemy.alive = true;
+    engine.applyDamage(engine.enemy, engine.player, C.vanguard.maxHealth);
+    expect(engine.winner).toBe("B");
+    // a second death (e.g. sudden death burning the survivor) must not flip the result
+    engine.enemy.alive = true;
+    engine.applyDamage(null, engine.enemy, C.vanguard.maxHealth);
+    expect(engine.winner).toBe("B");
+  });
+
+  it("stops the loser's in-flight bolts from killing after they died", () => {
+    const engine = new GameEngine();
+    engine.phase = "PLAYING";
+    engine.player.pos = { x: 800, y: 600 };
+    engine.enemy.pos = { x: 880, y: 600 };
+    engine.enemy.hp = 1;
+    engine.update(0.02, cast("basic", { x: 1, y: 0 }));
+    expect(engine.projectiles).toHaveLength(1);
+
+    engine.applyDamage(null, engine.player, C.vanguard.maxHealth);
+    advance(engine, C.match.freezeOnDeath + 0.1);
+    expect(engine.enemy.alive).toBe(true);
+    expect(engine.winner).toBe("B");
+    // the dead owner's bolt is not counted as a miss either
+    expect(engine.player.stats.abilitiesMissed).toBe(0);
+  });
+
   it("moves from PLAYER_DEAD to RESULTS after the freeze, then stops updating", () => {
     const engine = playing();
     engine.applyDamage(null, engine.player, C.vanguard.maxHealth);
@@ -456,6 +493,43 @@ describe("snapshot and reset", () => {
       winner: null,
     });
     expect(snap.upgrades).not.toBe(engine.player.upgrades);
+  });
+
+  it("reports camp state and the in-combat flag for the HUD", () => {
+    const engine = playing();
+    expect(engine.snapshot().camps).toEqual([
+      { id: 0, phase: "PENDING", respawnIn: 0, mobsAlive: 0, mobsTotal: C.mobs.crawlersPerCamp },
+      { id: 1, phase: "PENDING", respawnIn: 0, mobsAlive: 0, mobsTotal: C.mobs.crawlersPerCamp },
+    ]);
+    expect(engine.snapshot().inCombat).toBe(false);
+
+    // walk onto the west camp: it spawns and the crawlers pick the player up
+    engine.player.pos = { x: C.mobs.camps[0]!.x, y: C.mobs.camps[0]!.y };
+    advance(engine, 0.5);
+    const camp = engine.snapshot().camps[0]!;
+    expect(camp.phase).toBe("COMBAT");
+    expect(camp.mobsAlive).toBe(C.mobs.crawlersPerCamp);
+    expect(engine.snapshot().inCombat).toBe(true);
+  });
+
+  it("treats a nearby enemy fighter as combat", () => {
+    const engine = playing();
+    engine.enemy.alive = true;
+    engine.enemy.pos = { x: engine.player.pos.x + 60, y: engine.player.pos.y };
+    expect(engine.snapshot().inCombat).toBe(true);
+    engine.enemy.pos = {
+      x: engine.player.pos.x + C.vanguard.attackRange + 50,
+      y: engine.player.pos.y,
+    };
+    expect(engine.snapshot().inCombat).toBe(false);
+  });
+
+  it("reports no combat once the player is dead", () => {
+    const engine = playing();
+    engine.enemy.alive = true;
+    engine.enemy.pos = { ...engine.player.pos };
+    engine.player.alive = false;
+    expect(engine.snapshot().inCombat).toBe(false);
   });
 
   it("clamps the overshot countdown and an overrun clock at zero", () => {
