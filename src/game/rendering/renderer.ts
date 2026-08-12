@@ -36,7 +36,7 @@ export function render(
   drawWalls(ctx);
   drawEffectsUnder(ctx, engine);
   drawAimIndicator(ctx, engine);
-  for (const m of engine.mobs) if (m.alive) drawMob(ctx, m);
+  for (const m of engine.mobs) if (m.alive) drawMob(ctx, m, engine.time);
 
   drawFighter(ctx, engine.enemy, "#fb7185", "#7f1d3a");
   drawFighter(ctx, engine.player, "#38bdf8", "#0e4a6e");
