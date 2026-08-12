@@ -713,31 +713,55 @@ function drawEffectsUnder(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   for (const e of engine.effects) {
     const t = e.life / e.maxLife;
     if (e.kind === "dash-trail") {
+      const c = e.color ?? "#38bdf8";
+      const r = (e.radius ?? 20) * (0.4 + t * 0.6);
+      const g = ctx.createRadialGradient(e.pos.x, e.pos.y, 0, e.pos.x, e.pos.y, r);
+      g.addColorStop(0, `${c}88`);
+      g.addColorStop(1, `${c}00`);
+      ctx.globalAlpha = t * 0.8;
+      ctx.fillStyle = g;
       ctx.beginPath();
-      ctx.arc(e.pos.x, e.pos.y, (e.radius ?? 20) * (0.4 + t * 0.6), 0, Math.PI * 2);
-      ctx.fillStyle = e.color ?? "#38bdf8";
-      ctx.globalAlpha = t * 0.35;
+      ctx.arc(e.pos.x, e.pos.y, r, 0, Math.PI * 2);
       ctx.fill();
+      ctx.globalAlpha = t * 0.5;
+      ctx.strokeStyle = c;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(e.pos.x, e.pos.y, r * 0.7, 0, Math.PI * 2);
+      ctx.stroke();
       ctx.globalAlpha = 1;
     }
     if (e.kind === "telegraph-line" && e.dir) {
       // charge-up lane: fills toward the caster's aim during the windup
       const charge = 1 - t;
       const len = e.radius ?? 400;
+      const c = e.color ?? "#a78bfa";
       ctx.save();
       ctx.translate(e.pos.x, e.pos.y);
       ctx.rotate(Math.atan2(e.dir.y, e.dir.x));
-      ctx.fillStyle = `${e.color ?? "#a78bfa"}22`;
+      ctx.fillStyle = `${c}1f`;
       ctx.fillRect(0, -18, len, 36);
-      ctx.fillStyle = `${e.color ?? "#a78bfa"}55`;
+      const fill = ctx.createLinearGradient(0, 0, len * Math.max(charge, 0.001), 0);
+      fill.addColorStop(0, `${c}88`);
+      fill.addColorStop(1, `${c}33`);
+      ctx.fillStyle = fill;
       ctx.fillRect(0, -18, len * charge, 36);
-      ctx.strokeStyle = e.color ?? "#a78bfa";
+      // leading edge marker
+      ctx.shadowColor = c;
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = c;
+      ctx.fillRect(len * charge - 2, -18, 4, 36);
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = c;
       ctx.globalAlpha = 0.45 + 0.55 * charge;
       ctx.lineWidth = 2;
+      ctx.setLineDash([14, 10]);
       ctx.strokeRect(0, -18, len, 36);
+      ctx.setLineDash([]);
       ctx.globalAlpha = 1;
       ctx.restore();
     }
+
 
     if (e.kind === "shockwave") {
       ctx.beginPath();
