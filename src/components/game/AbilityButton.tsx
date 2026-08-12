@@ -65,27 +65,35 @@ export function AbilityButton({
         if (ready) onCast(ability);
       }}
       onPointerCancel={end}
-      className={`relative touch-none select-none rounded-full border-2 font-bold uppercase tracking-wide transition-transform ${
+      className={`relative touch-none select-none rounded-full border font-black uppercase tracking-wide transition-transform ${
         big ? "size-24 text-xl" : "size-[4.5rem] text-lg"
       } ${
         ready
-          ? "border-primary bg-primary/25 text-primary shadow-[0_0_24px_color-mix(in_oklab,var(--color-primary)_55%,transparent)]"
-          : "border-border/50 bg-card/40 text-muted-foreground/70"
+          ? "border-primary/80 bg-[radial-gradient(circle_at_30%_25%,color-mix(in_oklab,var(--color-primary)_45%,transparent),color-mix(in_oklab,var(--color-primary)_12%,transparent))] text-primary shadow-[0_0_28px_color-mix(in_oklab,var(--color-primary)_45%,transparent),inset_0_0_18px_color-mix(in_oklab,var(--color-primary)_25%,transparent)]"
+          : "border-border/40 bg-card/40 text-muted-foreground/60"
       } ${drag ? "scale-95" : ""}`}
     >
+      <span
+        className={`pointer-events-none absolute inset-[3px] rounded-full border ${
+          ready ? "border-primary/30" : "border-border/25"
+        }`}
+      />
       {pct > 0 && (
         <span
-          className="pointer-events-none absolute inset-0 rounded-full bg-background/75"
+          className="pointer-events-none absolute inset-0 rounded-full bg-background/80 backdrop-blur-[1px]"
           style={{ clipPath: `inset(0 0 ${(1 - pct) * 100}% 0)` }}
         />
       )}
       {charge !== undefined && charge < 1 && (
         <span
-          className="pointer-events-none absolute inset-0 rounded-full bg-background/75"
+          className="pointer-events-none absolute inset-0 rounded-full bg-background/80"
           style={{ clipPath: `inset(0 0 ${charge * 100}% 0)` }}
         />
       )}
-      <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center leading-none">
+      {ready && (
+        <span className="pointer-events-none absolute -inset-1 animate-pulse rounded-full border border-primary/25" />
+      )}
+      <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center leading-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.6)]">
         <span>{label}</span>
         {cooldown > 0 && (
           <span className="mt-0.5 font-mono text-[11px] font-semibold text-foreground/80">{cooldown.toFixed(1)}</span>
@@ -99,3 +107,4 @@ export function AbilityButton({
     </button>
   );
 }
+
