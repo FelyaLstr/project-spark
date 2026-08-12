@@ -1,7 +1,9 @@
 import { GAME_CONFIG } from "../config/gameConfig";
 import {
   add,
+  circleHitsRect,
   clamp,
+  decay,
   dist,
   norm,
   resolveCircleRect,
@@ -9,6 +11,8 @@ import {
   sub,
   type Vec,
 } from "../core/math";
+import { createIdSource } from "../core/ids";
+import { byTeam, teamColors } from "../core/teams";
 import type {
   AbilityKey,
   AimPreview,
@@ -26,14 +30,12 @@ import type {
   UpgradeKind,
 } from "../core/types";
 import { emptyCommand } from "../core/types";
-import { makeCamps, resetMobIds, spawnCampMobs, spawnGuardian } from "../mobs/mobs";
+import { makeCamps, mobConfig, resetMobIds, spawnGuardian } from "../mobs/mobs";
 import { updateMobs } from "../mobs/MobController";
 import { createAIController, type AIController } from "../ai/AIController";
 
-
 const C = GAME_CONFIG;
-let idc = 0;
-const nid = (p: string) => `${p}_${++idc}`;
+const ids = createIdSource();
 
 function makeFighter(team: Team, pos: Vec): Fighter {
   const v = C.vanguard;
@@ -105,11 +107,10 @@ export class GameEngine {
   /** last frame's collision state, for the debug overlay */
   debugInfo = { playerBlocked: false, enemyBlocked: false, fighterContact: false };
 
-
   readonly corePos: Vec = { x: C.arena.width / 2, y: C.arena.height / 2 };
 
   reset() {
-    idc = 0;
+    ids.reset();
     this.phase = "COUNTDOWN";
     this.time = 0;
     this.countdown = C.match.countdownSeconds;
@@ -135,7 +136,6 @@ export class GameEngine {
     this.dodgeTextCd = {};
     this.ai = createAIController(C.ai.difficulty);
   }
-
 
   announce(text: string) {
     this.announcement = text;
@@ -189,7 +189,13 @@ export class GameEngine {
       life: 1.1,
       color: "#7dd3fc",
     });
-    this.pushEffect({ kind: "impact-ring", pos: { ...who.pos }, radius: who.radius + 30, life: 0.45, color: "#38bdf8" });
+    this.pushEffect({
+      kind: "impact-ring",
+      pos: { ...who.pos },
+      radius: who.radius + 30,
+      life: 0.45,
+      color: "#38bdf8",
+    });
     return true;
   }
 
@@ -206,7 +212,6 @@ export class GameEngine {
       color: "#67e8f9",
     });
   }
-
 
   // ---------- main loop ----------
   update(rawDt: number, playerCmd: InputCommand) {
@@ -249,7 +254,7 @@ export class GameEngine {
 
     this.time += dt;
     for (const k of Object.keys(this.dodgeTextCd)) {
-      this.dodgeTextCd[k] = Math.max(0, (this.dodgeTextCd[k] ?? 0) - dt);
+      this.dodgeTextCd[k] = decay(this.dodgeTextCd[k] ?? 0, dt);
     }
 
     if (this.announceTimer > 0) {
@@ -275,7 +280,6 @@ export class GameEngine {
           dt,
         )
       : emptyCommand();
-
 
     this.updateFighter(this.player, playerCmd, dt);
     this.updateFighter(this.enemy, aiCmd, dt);
@@ -352,17 +356,16 @@ export class GameEngine {
     return m;
   }
 
-
   private updateFighter(f: Fighter, cmd: InputCommand, dt: number) {
     if (!f.alive) return;
     for (const k of Object.keys(f.cooldowns) as AbilityKey[]) {
-      f.cooldowns[k] = Math.max(0, f.cooldowns[k] - dt);
+      f.cooldowns[k] = decay(f.cooldowns[k], dt);
     }
-    f.ultActiveFor = Math.max(0, f.ultActiveFor - dt);
-    f.dashFor = Math.max(0, f.dashFor - dt);
-    f.invulnFor = Math.max(0, f.invulnFor - dt);
-    f.hitFlash = Math.max(0, f.hitFlash - dt);
-    f.buffs.overchargeFor = Math.max(0, f.buffs.overchargeFor - dt);
+    f.ultActiveFor = decay(f.ultActiveFor, dt);
+    f.dashFor = decay(f.dashFor, dt);
+    f.invulnFor = decay(f.invulnFor, dt);
+    f.hitFlash = decay(f.hitFlash, dt);
+    f.buffs.overchargeFor = decay(f.buffs.overchargeFor, dt);
 
     const aim = norm(cmd.aim);
     if (aim.x || aim.y) f.facing = Math.atan2(aim.y, aim.x);
@@ -374,19 +377,27 @@ export class GameEngine {
 
     if (f.dashFor > 0) {
       // dash keeps its own velocity, leaves a dense readable trail
-      this.pushEffect({ kind: "dash-trail", pos: { ...f.pos }, radius: f.radius, life: 0.26, color: f.team === "A" ? "#38bdf8" : "#fb7185" });
+      this.pushEffect({
+        kind: "dash-trail",
+        pos: { ...f.pos },
+        radius: f.radius,
+        life: 0.26,
+        color: teamColors(f.team).dashTrail,
+      });
     } else {
       const maxSpeed = this.speedOf(f);
       const target = scale(move, maxSpeed * Math.min(1, ml || 0));
       let rate: number = ml > 0.02 ? C.vanguard.acceleration : C.vanguard.deceleration;
       // bleed off dash overspeed over the recovery window instead of snapping
       const speed = Math.hypot(f.vel.x, f.vel.y);
-      if (speed > maxSpeed * 1.05) rate = Math.max(rate, (speed - maxSpeed) / Math.max(0.01, C.abilities.w.recovery));
+      if (speed > maxSpeed * 1.05)
+        rate = Math.max(rate, (speed - maxSpeed) / Math.max(0.01, C.abilities.w.recovery));
 
       const diff = sub(target, f.vel);
       const dl = Math.hypot(diff.x, diff.y);
       const maxStep = rate * dt;
-      f.vel = dl <= maxStep ? target : add(f.vel, scale({ x: diff.x / dl, y: diff.y / dl }, maxStep));
+      f.vel =
+        dl <= maxStep ? target : add(f.vel, scale({ x: diff.x / dl, y: diff.y / dl }, maxStep));
     }
 
     let step = scale(f.vel, dt);
@@ -395,7 +406,8 @@ export class GameEngine {
 
     const wanted = add(f.pos, step);
     const resolved = this.collide(wanted, f.radius);
-    const blocked = Math.abs(resolved.x - wanted.x) > 0.01 || Math.abs(resolved.y - wanted.y) > 0.01;
+    const blocked =
+      Math.abs(resolved.x - wanted.x) > 0.01 || Math.abs(resolved.y - wanted.y) > 0.01;
     if (f.team === "A") this.debugInfo.playerBlocked = blocked;
     else this.debugInfo.enemyBlocked = blocked;
     // if a wall stopped us, kill the velocity component into it
@@ -404,7 +416,6 @@ export class GameEngine {
       if (Math.abs(resolved.y - wanted.y) > 0.01) f.vel.y = 0;
     }
     f.pos = resolved;
-
 
     if (cmd.cast) this.tryCast(f, cmd.cast, aim);
   }
@@ -437,8 +448,9 @@ export class GameEngine {
     opts: { speed: number; radius: number; damage: number; range: number; trailMax: number },
   ) {
     const origin = add(f.pos, scale(dir, f.radius + 6));
+    const colors = teamColors(f.team);
     this.projectiles.push({
-      id: nid("p"),
+      id: ids.next("p"),
       owner: f.id,
       team: f.team,
       kind,
@@ -460,7 +472,7 @@ export class GameEngine {
       dir,
       radius: kind === "q" ? 30 : 15,
       life: kind === "q" ? 0.2 : 0.12,
-      color: f.team === "A" ? (kind === "q" ? "#c4b5fd" : "#67e8f9") : kind === "q" ? "#fdba74" : "#fda4af",
+      color: kind === "q" ? colors.muzzleQ : colors.muzzleBasic,
     });
   }
 
@@ -492,7 +504,7 @@ export class GameEngine {
         dir,
         radius: q.range,
         life: q.qTelegraphDuration,
-        color: f.team === "A" ? "#a78bfa" : "#fb923c",
+        color: teamColors(f.team).telegraph,
       });
       const damage = q.damage * this.damageMult(f);
       this.later(q.qTelegraphDuration, () => {
@@ -516,15 +528,26 @@ export class GameEngine {
       // instant, fully predictable dash vector (no acceleration ramp)
       f.vel = scale(dir, w.distance / w.duration);
       f.knockback = { x: 0, y: 0 };
-      this.pushEffect({ kind: "dodge-ring", pos: { ...f.pos }, radius: 44, life: 0.28, color: "#a5f3fc" });
+      this.pushEffect({
+        kind: "dodge-ring",
+        pos: { ...f.pos },
+        radius: 44,
+        life: 0.28,
+        color: "#a5f3fc",
+      });
       return;
     }
-
 
     if (key === "e") {
       const e = C.abilities.e;
       f.cooldowns.e = e.cooldown * cdm;
-      this.pushEffect({ kind: "shockwave", pos: { ...f.pos }, radius: e.radius, life: e.telegraph + 0.2, color: f.team === "A" ? "#60a5fa" : "#fb7185" });
+      this.pushEffect({
+        kind: "shockwave",
+        pos: { ...f.pos },
+        radius: e.radius,
+        life: e.telegraph + 0.2,
+        color: teamColors(f.team).shockwave,
+      });
       const mult = this.damageMult(f);
       const origin = { ...f.pos };
       this.later(e.telegraph, () => {
@@ -544,9 +567,21 @@ export class GameEngine {
       f.ultCharge = 0;
       f.ultActiveFor = C.abilities.r.duration;
       this.pushEffect({ kind: "hit", pos: { ...f.pos }, radius: 130, life: 0.7, color: "#fbbf24" });
-      this.pushEffect({ kind: "shockwave", pos: { ...f.pos }, radius: 110, life: 0.5, color: "#fbbf24" });
-      this.pushEffect({ kind: "text", pos: { ...f.pos }, text: "OVERDRIVE", life: 1.4, color: "#fbbf24" });
-      this.announce(f.team === "A" ? "OVERDRIVE" : "ENEMY OVERDRIVE");
+      this.pushEffect({
+        kind: "shockwave",
+        pos: { ...f.pos },
+        radius: 110,
+        life: 0.5,
+        color: "#fbbf24",
+      });
+      this.pushEffect({
+        kind: "text",
+        pos: { ...f.pos },
+        text: "OVERDRIVE",
+        life: 1.4,
+        color: "#fbbf24",
+      });
+      this.announce(byTeam(f.team, "OVERDRIVE", "ENEMY OVERDRIVE"));
     }
   }
 
@@ -575,7 +610,13 @@ export class GameEngine {
       // i-frame dodge: one popup per window, plus a soft ring pulse
       if ((this.dodgeTextCd[target.id] ?? 0) <= 0) {
         this.dodgeTextCd[target.id] = F.dodgeTextCooldown;
-        this.pushEffect({ kind: "text", pos: { ...target.pos }, text: "DODGE", life: 0.6, color: "#a3e635" });
+        this.pushEffect({
+          kind: "text",
+          pos: { ...target.pos },
+          text: "DODGE",
+          life: 0.6,
+          color: "#a3e635",
+        });
       }
       this.pushEffect({
         kind: "dodge-ring",
@@ -614,7 +655,11 @@ export class GameEngine {
       pos: { x: target.pos.x + (Math.random() - 0.5) * 16, y: target.pos.y },
       text: `${Math.round(dmg)}`,
       life: C.feedback.damageTextLife * (vsMob ? 0.75 : 1),
-      color: vsMob ? "#d9f99d" : this.isFighter(target) && target.team === "A" ? "#fca5a5" : "#fde68a",
+      color: vsMob
+        ? "#d9f99d"
+        : this.isFighter(target)
+          ? teamColors(target.team).damageText
+          : "#fde68a",
     });
 
     if (source && this.isFighter(source)) {
@@ -638,14 +683,19 @@ export class GameEngine {
         // essence goes to the final blow only
         if (source && this.isFighter(source)) {
           source.stats.mobsKilled += 1;
-          const cfg = mob.kind === "crawler" ? C.mobs.crawler : C.mobs.guardian;
-          this.grantEssence(source, cfg.essence, mob.pos);
+          this.grantEssence(source, mobConfig(mob.kind).essence, mob.pos);
           if (mob.kind === "guardian") {
             source.buffs.guardianPower += C.mobs.guardian.abilityPowerBonus;
-            this.announce(source.team === "A" ? "YOU SLEW THE GUARDIAN" : "ENEMY SLEW THE GUARDIAN");
+            this.announce(byTeam(source.team, "YOU SLEW THE GUARDIAN", "ENEMY SLEW THE GUARDIAN"));
           }
         }
-        this.pushEffect({ kind: "hit", pos: { ...mob.pos }, radius: mob.radius * 2, life: 0.4, color: "#84cc16" });
+        this.pushEffect({
+          kind: "hit",
+          pos: { ...mob.pos },
+          radius: mob.radius * 2,
+          life: 0.4,
+          color: "#84cc16",
+        });
         this.pushEffect({
           kind: "impact-ring",
           pos: { ...mob.pos },
@@ -655,7 +705,6 @@ export class GameEngine {
         });
       }
     }
-
   }
 
   private onFighterDeath(f: Fighter) {
@@ -665,10 +714,21 @@ export class GameEngine {
     this.hitStop = Math.max(this.hitStop, 0.09);
     f.vel = { x: 0, y: 0 };
     this.pushEffect({ kind: "hit", pos: { ...f.pos }, radius: 110, life: 1.2, color: "#ef4444" });
-    this.pushEffect({ kind: "shockwave", pos: { ...f.pos }, radius: 90, life: 0.6, color: "#ef4444" });
-    this.pushEffect({ kind: "impact-ring", pos: { ...f.pos }, radius: 150, life: 0.9, color: "#f87171" });
+    this.pushEffect({
+      kind: "shockwave",
+      pos: { ...f.pos },
+      radius: 90,
+      life: 0.6,
+      color: "#ef4444",
+    });
+    this.pushEffect({
+      kind: "impact-ring",
+      pos: { ...f.pos },
+      radius: 150,
+      life: 0.9,
+      color: "#f87171",
+    });
   }
-
 
   // ---------- mobs ----------
   private updateMobs(dt: number) {
@@ -686,7 +746,6 @@ export class GameEngine {
       dt,
     );
   }
-
 
   // ---------- projectiles ----------
   private updateProjectiles(dt: number) {
@@ -715,19 +774,27 @@ export class GameEngine {
 
       if (!dead) {
         for (const wall of C.arena.walls) {
-          if (
-            p.pos.x > wall.x - p.radius &&
-            p.pos.x < wall.x + wall.w + p.radius &&
-            p.pos.y > wall.y - p.radius &&
-            p.pos.y < wall.y + wall.h + p.radius
-          ) {
+          if (circleHitsRect(p.pos, p.radius, wall)) {
             dead = true;
-            this.pushEffect({ kind: "fizzle", pos: { ...p.pos }, radius: p.radius * 2, life: 0.22, color: "#94a3b8" });
+            this.pushEffect({
+              kind: "fizzle",
+              pos: { ...p.pos },
+              radius: p.radius * 2,
+              life: 0.22,
+              color: "#94a3b8",
+            });
             break;
           }
         }
       }
-      if (!dead && (p.traveled > p.range || p.pos.x < 0 || p.pos.y < 0 || p.pos.x > C.arena.width || p.pos.y > C.arena.height)) {
+      if (
+        !dead &&
+        (p.traveled > p.range ||
+          p.pos.x < 0 ||
+          p.pos.y < 0 ||
+          p.pos.x > C.arena.width ||
+          p.pos.y > C.arena.height)
+      ) {
         dead = true;
         // subtle miss puff — never a damage number
         this.pushEffect({
@@ -735,7 +802,7 @@ export class GameEngine {
           pos: { ...p.pos },
           radius: p.radius * 1.6,
           life: 0.2,
-          color: p.team === "A" ? "#38bdf8" : "#fb7185",
+          color: teamColors(p.team).fizzle,
         });
       }
 
@@ -769,8 +836,14 @@ export class GameEngine {
       f.stats.coreCaptures += 1;
       this.core = { active: false, progressA: 0, progressB: 0, ownedBy: f.team };
       if (this.phase === "CORE_EVENT") this.phase = "PLAYING";
-      this.announce(f.team === "A" ? "YOU CAPTURED THE CORE" : "ENEMY CAPTURED THE CORE");
-      this.pushEffect({ kind: "core-ring", pos: { ...this.corePos }, radius: C.arena.coreRadius, life: 0.9, color: "#38bdf8" });
+      this.announce(byTeam(f.team, "YOU CAPTURED THE CORE", "ENEMY CAPTURED THE CORE"));
+      this.pushEffect({
+        kind: "core-ring",
+        pos: { ...this.corePos },
+        radius: C.arena.coreRadius,
+        life: 0.9,
+        color: "#38bdf8",
+      });
     };
     if (this.core.progressA >= C.core.captureSeconds) capture(this.player);
     else if (this.core.progressB >= C.core.captureSeconds) capture(this.enemy);
@@ -799,7 +872,7 @@ export class GameEngine {
 
   // ---------- effects ----------
   pushEffect(e: Omit<Effect, "id" | "maxLife"> & { life: number }) {
-    this.effects.push({ id: nid("fx"), maxLife: e.life, ...e });
+    this.effects.push({ id: ids.next("fx"), maxLife: e.life, ...e });
     if (this.effects.length > 220) this.effects.splice(0, this.effects.length - 220);
   }
 

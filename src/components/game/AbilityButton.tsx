@@ -1,5 +1,6 @@
 import { useRef, useState, type PointerEvent as RPointerEvent } from "react";
 import type { AbilityKey } from "@/game/core/types";
+import { capturePointer, pointerOffset, releasePointer } from "@/lib/pointer";
 
 type Props = {
   label: string;
@@ -37,14 +38,12 @@ export function AbilityButton({
     if (!aimable) return;
     const el = ref.current;
     if (!el) return;
-    const r = el.getBoundingClientRect();
-    const dx = e.clientX - (r.left + r.width / 2);
-    const dy = e.clientY - (r.top + r.height / 2);
-    if (Math.hypot(dx, dy) > 10) onAim?.({ x: dx, y: dy });
+    const { x, y, distance } = pointerOffset(el, e);
+    if (distance > 10) onAim?.({ x, y });
   };
 
   const end = (e: RPointerEvent<HTMLButtonElement>) => {
-    e.currentTarget.releasePointerCapture?.(e.pointerId);
+    releasePointer(e);
     setDrag(false);
     onAimEnd?.();
   };
@@ -54,7 +53,7 @@ export function AbilityButton({
       ref={ref}
       aria-label={`Ability ${label}`}
       onPointerDown={(e) => {
-        e.currentTarget.setPointerCapture(e.pointerId);
+        capturePointer(e);
         setDrag(true);
         if (aimable) onAimStart?.(ability);
         move(e);
@@ -88,7 +87,9 @@ export function AbilityButton({
       <span className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center leading-none">
         <span>{label}</span>
         {cooldown > 0 && (
-          <span className="mt-0.5 font-mono text-[11px] font-semibold text-foreground/80">{cooldown.toFixed(1)}</span>
+          <span className="mt-0.5 font-mono text-[11px] font-semibold text-foreground/80">
+            {cooldown.toFixed(1)}
+          </span>
         )}
         {charge !== undefined && charge < 1 && cooldown <= 0 && (
           <span className="mt-0.5 font-mono text-[11px] font-semibold text-foreground/70">

@@ -1,5 +1,14 @@
 import { GAME_CONFIG } from "../config/gameConfig";
-import { dist, norm, scale, sub, type Rect, type Vec } from "../core/math";
+import {
+  closestPointOnRect,
+  dist,
+  nearest,
+  norm,
+  scale,
+  sub,
+  type Rect,
+  type Vec,
+} from "../core/math";
 import type { Camp, Fighter, InputCommand, Mob, Projectile, UpgradeKind } from "../core/types";
 
 export type AIDifficulty = "easy" | "normal" | "hard";
@@ -36,12 +45,20 @@ const ZERO: Vec = { x: 0, y: 0 };
  * "how long until the shot arrives -> where will they be then".
  * Never solves the exact quadratic; that is intentional.
  */
-function leadAim(self: Fighter, target: AimTarget, projectileSpeed: number, leadFactor: number): Vec {
+function leadAim(
+  self: Fighter,
+  target: AimTarget,
+  projectileSpeed: number,
+  leadFactor: number,
+): Vec {
   let t = dist(self.pos, target.pos) / projectileSpeed;
   for (let i = 0; i < 2; i++) {
     const px = target.pos.x + target.vel.x * t * leadFactor;
     const py = target.pos.y + target.vel.y * t * leadFactor;
-    t = Math.min(GAME_CONFIG.ai.maxLeadSeconds, Math.hypot(px - self.pos.x, py - self.pos.y) / projectileSpeed);
+    t = Math.min(
+      GAME_CONFIG.ai.maxLeadSeconds,
+      Math.hypot(px - self.pos.x, py - self.pos.y) / projectileSpeed,
+    );
   }
   const predicted: Vec = {
     x: target.pos.x + target.vel.x * t * leadFactor,
@@ -50,25 +67,13 @@ function leadAim(self: Fighter, target: AimTarget, projectileSpeed: number, lead
   return norm(sub(predicted, self.pos));
 }
 
-function nearestMob(mobs: Mob[], p: Vec, maxDist = Infinity): Mob | null {
-  let best: Mob | null = null;
-  let bd = maxDist;
-  for (const m of mobs) {
-    if (!m.alive) continue;
-    const d = dist(m.pos, p);
-    if (d < bd) {
-      bd = d;
-      best = m;
-    }
-  }
-  return best;
-}
-
 /**
  * Local opponent AI. Emits the same InputCommand shape as a human, so it can be
  * swapped for a network peer later. Intentionally imperfect.
  */
-export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.difficulty): AIController {
+export function createAIController(
+  difficulty: AIDifficulty = GAME_CONFIG.ai.difficulty,
+): AIController {
   const cfg = GAME_CONFIG.ai.levels[difficulty];
   const FARM = GAME_CONFIG.ai.farm;
   let reactionTimer = cfg.reaction;
@@ -98,7 +103,9 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
     }
 
     if (farmable.length && range > FARM.safeDistance && Math.random() < cfg.farmChance) {
-      const target = farmable.reduce((a, b) => (dist(self.pos, a.pos) < dist(self.pos, b.pos) ? a : b));
+      const target = farmable.reduce((a, b) =>
+        dist(self.pos, a.pos) < dist(self.pos, b.pos) ? a : b,
+      );
       campId = target.id;
       return "FARM";
     }
@@ -119,7 +126,10 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
       buyTimer -= dt;
       if (buyTimer <= 0) {
         buyTimer = cfg.buyInterval;
-        const order: UpgradeKind[] = self.hp / self.maxHp < 0.5 ? ["vitality", "power", "haste"] : ["power", "haste", "vitality"];
+        const order: UpgradeKind[] =
+          self.hp / self.maxHp < 0.5
+            ? ["vitality", "power", "haste"]
+            : ["power", "haste", "vitality"];
         for (const k of order) if (w.buy(k)) break;
       }
 
@@ -130,7 +140,10 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
         mode = pickMode(w);
       }
       const camp = campId === null ? null : (w.camps.find((c) => c.id === campId) ?? null);
-      if ((mode === "FARM" || mode === "CONTEST") && (!camp || camp.phase === "CLEARED" || camp.phase === "RESPAWNING")) {
+      if (
+        (mode === "FARM" || mode === "CONTEST") &&
+        (!camp || camp.phase === "CLEARED" || camp.phase === "RESPAWNING")
+      ) {
         mode = "FIGHT";
       }
 
@@ -138,9 +151,15 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
       const range = dist(self.pos, foe.pos);
 
       // pick what we are actually shooting at this frame
-      const campMob = camp ? nearestMob(w.mobs.filter((m) => m.campId === camp.id), self.pos) : null;
-      const closeMob = nearestMob(w.mobs, self.pos, 200);
-      const attackMob = mode === "FARM" ? (campMob ?? closeMob) : mode === "CONTEST" ? null : closeMob;
+      const campMob = camp
+        ? nearest(
+            w.mobs.filter((m) => m.campId === camp.id),
+            self.pos,
+          )
+        : null;
+      const closeMob = nearest(w.mobs, self.pos, 200);
+      const attackMob =
+        mode === "FARM" ? (campMob ?? closeMob) : mode === "CONTEST" ? null : closeMob;
       const engaged: AimTarget =
         attackMob && (mode === "FARM" || range > 360)
           ? { pos: attackMob.pos, vel: ZERO, radius: attackMob.radius }
@@ -156,7 +175,10 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
       } else if (mode === "FARM" && campMob) {
         // close in on the crawler, then hold a short poke distance
         const delta = targetRange - 190;
-        move = Math.abs(delta) < 40 ? perp : norm({ x: toTarget.x * Math.sign(delta), y: toTarget.y * Math.sign(delta) });
+        move =
+          Math.abs(delta) < 40
+            ? perp
+            : norm({ x: toTarget.x * Math.sign(delta), y: toTarget.y * Math.sign(delta) });
       } else if (mode === "CONTEST" && camp && dist(self.pos, camp.pos) > FARM.contestRadius) {
         move = norm(sub(camp.pos, self.pos));
       } else {
@@ -171,8 +193,7 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
 
       // avoid hugging walls: nudge away from any wall we are close to
       for (const wall of w.walls) {
-        const cx = Math.max(wall.x, Math.min(self.pos.x, wall.x + wall.w));
-        const cy = Math.max(wall.y, Math.min(self.pos.y, wall.y + wall.h));
+        const { x: cx, y: cy } = closestPointOnRect(self.pos, wall);
         const d = Math.hypot(self.pos.x - cx, self.pos.y - cy);
         if (d < self.radius + 26) {
           const away = norm({ x: self.pos.x - cx, y: self.pos.y - cy });
@@ -202,11 +223,21 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
         const dueling = engaged.pos === foe.pos;
         if (threatened && self.cooldowns.w <= 0 && Math.random() < cfg.dodgeChance) decision = "w";
         else if (mode === "RETREAT" && self.cooldowns.w <= 0 && range < 300) decision = "w";
-        else if (dueling && self.ultCharge >= C.abilities.r.chargeMax && range < 420 && Math.random() < cfg.useUlt)
+        else if (
+          dueling &&
+          self.ultCharge >= C.abilities.r.chargeMax &&
+          range < 420 &&
+          Math.random() < cfg.useUlt
+        )
           decision = "r";
-        else if (self.cooldowns.q <= 0 && targetRange < C.abilities.q.range * 0.8 && Math.random() < cfg.qChance)
+        else if (
+          self.cooldowns.q <= 0 &&
+          targetRange < C.abilities.q.range * 0.8 &&
+          Math.random() < cfg.qChance
+        )
           decision = "q";
-        else if (self.cooldowns.basic <= 0 && targetRange < C.vanguard.attackRange * 0.9) decision = "basic";
+        else if (self.cooldowns.basic <= 0 && targetRange < C.vanguard.attackRange * 0.9)
+          decision = "basic";
       }
 
       let cast = decision;
@@ -219,7 +250,8 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
         // Q also has to cover its own windup, so treat it as a slower shot
         const effSpeed =
           cast === "q"
-            ? projSpeed / (1 + (C.abilities.q.qTelegraphDuration * projSpeed) / Math.max(1, targetRange))
+            ? projSpeed /
+              (1 + (C.abilities.q.qTelegraphDuration * projSpeed) / Math.max(1, targetRange))
             : projSpeed;
         aim = leadAim(self, engaged, effSpeed, cfg.leadFactor);
         aim = rot(aim, (Math.random() - 0.5) * (cfg.aimError + cfg.leadError) * 2);
@@ -229,7 +261,8 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
 
       // dodge sideways when we burn the dash
       if (cast === "w") {
-        const dodgeDir: Vec = mode === "RETREAT" ? move : { x: -toFoe.y * strafeDir, y: toFoe.x * strafeDir };
+        const dodgeDir: Vec =
+          mode === "RETREAT" ? move : { x: -toFoe.y * strafeDir, y: toFoe.x * strafeDir };
         return { move: dodgeDir, aim: dodgeDir, cast };
       }
       if (cast && self.cooldowns[cast] > 0) cast = null;

@@ -1,7 +1,7 @@
 import { GAME_CONFIG } from "../config/gameConfig";
-import { add, dist, norm, scale, sub, type Vec } from "../core/math";
+import { add, decay, dist, nearest, norm, scale, sub, type Vec } from "../core/math";
 import type { Camp, Effect, Fighter, Mob } from "../core/types";
-import { spawnCampMobs } from "./mobs";
+import { mobConfig, spawnCampMobs } from "./mobs";
 
 const C = GAME_CONFIG;
 
@@ -16,8 +16,6 @@ export type MobContext = {
   later: (seconds: number, fn: () => void) => void;
 };
 
-const cfgOf = (m: Mob) => (m.kind === "crawler" ? C.mobs.crawler : C.mobs.guardian);
-
 /**
  * Neutral mob simulation. Runs inside the engine's fixed game loop — never React.
  * State machine: IDLE -> AGGRO -> CHASE -> ATTACK -> RETURN -> IDLE (or DEAD).
@@ -26,13 +24,13 @@ export function updateMobs(ctx: MobContext, dt: number) {
   updateCamps(ctx, dt);
 
   for (const m of ctx.mobs) {
-    m.hitFlash = Math.max(0, m.hitFlash - dt);
+    m.hitFlash = decay(m.hitFlash, dt);
     if (!m.alive) continue;
 
-    const cfg = cfgOf(m);
-    m.attackTimer = Math.max(0, m.attackTimer - dt);
-    m.telegraphFor = Math.max(0, m.telegraphFor - dt);
-    m.aggroFor = Math.max(0, m.aggroFor - dt);
+    const cfg = mobConfig(m.kind);
+    m.attackTimer = decay(m.attackTimer, dt);
+    m.telegraphFor = decay(m.telegraphFor, dt);
+    m.aggroFor = decay(m.aggroFor, dt);
 
     const live = ctx.fighters.filter((f) => f.alive);
     let target = live.find((f) => f.id === m.target) ?? null;
@@ -91,7 +89,13 @@ export function updateMobs(ctx: MobContext, dt: number) {
     if (m.kind === "guardian") {
       m.telegraphFor = C.mobs.guardian.telegraph;
       const pos = { ...m.pos };
-      ctx.pushEffect({ kind: "shockwave", pos, radius: 120, life: C.mobs.guardian.telegraph, color: "#f59e0b" });
+      ctx.pushEffect({
+        kind: "shockwave",
+        pos,
+        radius: 120,
+        life: C.mobs.guardian.telegraph,
+        color: "#f59e0b",
+      });
       ctx.later(C.mobs.guardian.telegraph, () => {
         for (const f of ctx.fighters) {
           if (f.alive && dist(pos, f.pos) < 120 + f.radius) ctx.applyDamage(m, f, cfg.damage);
@@ -118,26 +122,41 @@ function updateCamps(ctx: MobContext, dt: number) {
     const alive = campMobs.some((m) => m.alive);
 
     if (camp.phase === "PENDING") {
-      const activated = ctx.fighters.some((f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campActivationRadius);
+      const activated = ctx.fighters.some(
+        (f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campActivationRadius,
+      );
       if (!activated) continue;
 
       camp.phase = "AVAILABLE";
       camp.respawnIn = 0;
       if (!campMobs.length) {
         ctx.mobs.push(...spawnCampMobs(camp));
-        ctx.pushEffect({ kind: "core-ring", pos: { ...camp.pos }, radius: camp.radius, life: 0.7, color: "#a3e635" });
+        ctx.pushEffect({
+          kind: "core-ring",
+          pos: { ...camp.pos },
+          radius: camp.radius,
+          life: 0.7,
+          color: "#a3e635",
+        });
       }
       continue;
     }
 
     if (camp.phase === "CLEARED" || camp.phase === "RESPAWNING") {
-      camp.respawnIn = Math.max(0, camp.respawnIn - dt);
+      camp.respawnIn = decay(camp.respawnIn, dt);
       camp.phase = camp.respawnIn > C.mobs.respawnSeconds - 2 ? "CLEARED" : "RESPAWNING";
       if (camp.respawnIn <= 0) {
-        for (let i = ctx.mobs.length - 1; i >= 0; i--) if (ctx.mobs[i]!.campId === camp.id) ctx.mobs.splice(i, 1);
+        for (let i = ctx.mobs.length - 1; i >= 0; i--)
+          if (ctx.mobs[i]!.campId === camp.id) ctx.mobs.splice(i, 1);
         ctx.mobs.push(...spawnCampMobs(camp));
         camp.phase = "AVAILABLE";
-        ctx.pushEffect({ kind: "core-ring", pos: { ...camp.pos }, radius: camp.radius, life: 0.7, color: "#a3e635" });
+        ctx.pushEffect({
+          kind: "core-ring",
+          pos: { ...camp.pos },
+          radius: camp.radius,
+          life: 0.7,
+          color: "#a3e635",
+        });
       }
       continue;
     }
@@ -148,23 +167,12 @@ function updateCamps(ctx: MobContext, dt: number) {
       continue;
     }
 
-    const contested = ctx.fighters.some((f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campCombatRadius);
+    const contested = ctx.fighters.some(
+      (f) => f.alive && dist(f.pos, camp.pos) < camp.radius + C.mobs.campCombatRadius,
+    );
     const fighting = campMobs.some((m) => m.alive && (m.state === "CHASE" || m.state === "ATTACK"));
     camp.phase = contested || fighting ? "COMBAT" : "AVAILABLE";
   }
-}
-
-function nearest(fs: Fighter[], p: Vec): Fighter | null {
-  let best: Fighter | null = null;
-  let bd = Infinity;
-  for (const f of fs) {
-    const d = dist(f.pos, p);
-    if (d < bd) {
-      bd = d;
-      best = f;
-    }
-  }
-  return best;
 }
 
 function step(ctx: MobContext, m: Mob, goal: Vec, speed: number, dt: number) {
