@@ -395,17 +395,29 @@ function Bar({
   tone: "primary" | "destructive";
   reverse?: boolean;
 }) {
+  const pct = Math.max(0, Math.min(1, ratio)) * 100;
+  const glow = tone === "primary" ? "var(--color-primary)" : "var(--color-destructive)";
   return (
     <div className="min-w-0 flex-1">
-      <div className={`flex text-[10px] uppercase tracking-widest text-muted-foreground ${reverse ? "justify-end" : ""}`}>
+      <div
+        className={`flex text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground ${reverse ? "justify-end" : ""}`}
+      >
         <span className="truncate">{label} · {value}</span>
       </div>
-      <div className={`mt-1 h-2.5 w-full overflow-hidden rounded-full bg-card/80 ${reverse ? "flex justify-end" : ""}`}>
+      <div
+        className={`mt-1 h-3 w-full overflow-hidden rounded-full border border-border/50 bg-background/70 shadow-[inset_0_1px_3px_rgba(0,0,0,0.7)] ${
+          reverse ? "flex justify-end" : ""
+        }`}
+      >
         <div
-          className={`h-full ${tone === "primary" ? "bg-primary" : "bg-destructive"}`}
-          style={{ width: `${Math.max(0, Math.min(1, ratio)) * 100}%` }}
+          className={`h-full ${tone === "primary" ? "bg-primary" : "bg-destructive"} transition-[width] duration-150`}
+          style={{
+            width: `${pct}%`,
+            boxShadow: `0 0 14px color-mix(in oklab, ${glow} 65%, transparent)`,
+          }}
         />
       </div>
     </div>
   );
 }
+
