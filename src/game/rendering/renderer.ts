@@ -504,66 +504,146 @@ function drawFighter(ctx: CanvasRenderingContext2D, f: Fighter, color: string, d
     ctx.stroke();
   }
 
-  // team glow pool
-  const glow = ctx.createRadialGradient(0, 0, f.radius * 0.6, 0, 0, f.radius + 26);
-  glow.addColorStop(0, `${color}55`);
-  glow.addColorStop(1, `${color}00`);
-  ctx.fillStyle = glow;
-  ctx.beginPath();
-  ctx.arc(0, 0, f.radius + 26, 0, Math.PI * 2);
-  ctx.fill();
-
-  // body: shaded orb with hard neon rim for a clean silhouette
+  // team identification: ground rune ring under the warrior
   ctx.save();
-  ctx.rotate(f.facing);
-  const body = ctx.createRadialGradient(-f.radius * 0.35, -f.radius * 0.4, f.radius * 0.15, 0, 0, f.radius);
-  if (f.hitFlash > 0) {
-    body.addColorStop(0, "#ffffff");
-    body.addColorStop(1, "#ffffff");
-  } else {
-    body.addColorStop(0, "#f8fbff");
-    body.addColorStop(0.45, color);
-    body.addColorStop(1, dark);
-  }
+  ctx.scale(1, 0.5);
   ctx.beginPath();
-  ctx.arc(0, 0, f.radius, 0, Math.PI * 2);
-  ctx.fillStyle = body;
-  ctx.fill();
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 18;
+  ctx.arc(0, f.radius * 1.4, f.radius * 1.35, 0, Math.PI * 2);
+  ctx.strokeStyle = `${color}aa`;
   ctx.lineWidth = 2.5;
-  ctx.strokeStyle = "rgba(240,249,255,0.9)";
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 14;
   ctx.stroke();
-  ctx.shadowBlur = 0;
-
-  // shoulder plates read as a facing-aware silhouette
-  ctx.beginPath();
-  ctx.moveTo(-f.radius * 0.2, -f.radius * 1.05);
-  ctx.lineTo(f.radius * 0.55, -f.radius * 0.55);
-  ctx.lineTo(f.radius * 0.55, f.radius * 0.55);
-  ctx.lineTo(-f.radius * 0.2, f.radius * 1.05);
-  ctx.closePath();
-  ctx.fillStyle = `${dark}cc`;
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = color;
   ctx.fill();
-  ctx.strokeStyle = `${color}`;
+  ctx.restore();
+
+  ctx.save();
+  ctx.rotate(f.facing + Math.PI / 2); // local space: character faces "up" (-Y)
+  const R = f.radius;
+  const flash = f.hitFlash > 0;
+
+  // muted crimson cloth / cape trailing behind
+  ctx.beginPath();
+  ctx.moveTo(-R * 0.55, R * 0.1);
+  ctx.quadraticCurveTo(-R * 0.95, R * 1.25, 0, R * 1.5);
+  ctx.quadraticCurveTo(R * 0.95, R * 1.25, R * 0.55, R * 0.1);
+  ctx.closePath();
+  const cloth = ctx.createLinearGradient(0, 0, 0, R * 1.5);
+  cloth.addColorStop(0, "#7f1d1d");
+  cloth.addColorStop(1, "#320c11");
+  ctx.fillStyle = flash ? "#ffffff" : cloth;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(20,10,12,0.9)";
   ctx.lineWidth = 1.5;
   ctx.stroke();
 
-  // weapon prong
+  // curved blade — the facing tell (extends forward-right)
+  ctx.save();
+  ctx.translate(R * 0.72, -R * 0.25);
+  ctx.rotate(-0.35);
   ctx.beginPath();
-  ctx.moveTo(f.radius - 2, 0);
-  ctx.lineTo(f.radius + 18, 0);
-  ctx.strokeStyle = "#f1f5f9";
-  ctx.shadowColor = color;
-  ctx.shadowBlur = 12;
-  ctx.lineWidth = 5;
+  ctx.moveTo(0, R * 0.35);
+  ctx.quadraticCurveTo(R * 0.5, -R * 0.9, R * 0.28, -R * 2.05);
+  ctx.quadraticCurveTo(R * 0.06, -R * 0.85, -R * 0.22, R * 0.3);
+  ctx.closePath();
+  const steel = ctx.createLinearGradient(-R * 0.2, 0, R * 0.4, -R * 1.6);
+  steel.addColorStop(0, "#5b6472");
+  steel.addColorStop(0.5, "#cbd5e1");
+  steel.addColorStop(1, "#8b93a3");
+  ctx.fillStyle = flash ? "#ffffff" : steel;
+  ctx.shadowColor = "rgba(167,139,250,0.75)";
+  ctx.shadowBlur = 10;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  // corrupted rune edge
+  ctx.beginPath();
+  ctx.moveTo(R * 0.02, R * 0.2);
+  ctx.quadraticCurveTo(R * 0.34, -R * 0.85, R * 0.24, -R * 1.9);
+  ctx.strokeStyle = "rgba(167,139,250,0.95)";
+  ctx.lineWidth = 1.6;
+  ctx.stroke();
+  // grip
+  ctx.beginPath();
+  ctx.moveTo(-R * 0.1, R * 0.28);
+  ctx.lineTo(-R * 0.28, R * 0.72);
+  ctx.strokeStyle = "#3f2a1b";
+  ctx.lineWidth = 4;
   ctx.lineCap = "round";
+  ctx.stroke();
+  ctx.restore();
+
+  // torso: dark steel plate
+  ctx.beginPath();
+  ctx.ellipse(0, R * 0.08, R * 0.72, R * 0.86, 0, 0, Math.PI * 2);
+  const armor = ctx.createLinearGradient(-R * 0.6, -R * 0.8, R * 0.6, R * 0.8);
+  if (flash) {
+    armor.addColorStop(0, "#ffffff");
+    armor.addColorStop(1, "#ffffff");
+  } else {
+    armor.addColorStop(0, "#4b5563");
+    armor.addColorStop(0.45, "#2b3240");
+    armor.addColorStop(1, "#151a24");
+  }
+  ctx.fillStyle = armor;
+  ctx.fill();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 10;
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // pauldrons — weathered bronze
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.ellipse(s * R * 0.72, -R * 0.18, R * 0.38, R * 0.5, s * 0.35, 0, Math.PI * 2);
+    const bronze = ctx.createLinearGradient(s * R * 0.5, -R * 0.6, s * R, R * 0.3);
+    bronze.addColorStop(0, flash ? "#ffffff" : "#8a6a3a");
+    bronze.addColorStop(1, flash ? "#ffffff" : "#3a2a17");
+    ctx.fillStyle = bronze;
+    ctx.fill();
+    ctx.strokeStyle = "rgba(12,14,20,0.9)";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // chest rune — restrained violet corruption
+  ctx.beginPath();
+  ctx.arc(0, R * 0.15, R * 0.17, 0, Math.PI * 2);
+  ctx.fillStyle = `rgba(167,139,250,${0.55 + 0.3 * Math.sin(now / 260)})`;
+  ctx.shadowColor = "#a78bfa";
+  ctx.shadowBlur = 12;
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // helmet
+  ctx.beginPath();
+  ctx.ellipse(0, -R * 0.62, R * 0.4, R * 0.42, 0, 0, Math.PI * 2);
+  const helm = ctx.createLinearGradient(0, -R, 0, -R * 0.25);
+  helm.addColorStop(0, flash ? "#ffffff" : "#6b7280");
+  helm.addColorStop(1, flash ? "#ffffff" : "#1f2430");
+  ctx.fillStyle = helm;
+  ctx.fill();
+  ctx.strokeStyle = "rgba(10,12,18,0.95)";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // visor slit facing forward
+  ctx.beginPath();
+  ctx.moveTo(-R * 0.22, -R * 0.82);
+  ctx.lineTo(R * 0.22, -R * 0.82);
+  ctx.strokeStyle = "rgba(196,181,253,0.9)";
+  ctx.lineWidth = 2;
+  ctx.shadowColor = "#a78bfa";
+  ctx.shadowBlur = 8;
   ctx.stroke();
   ctx.restore();
   ctx.restore();
 
   healthBar(ctx, f.pos.x, f.pos.y - f.radius - 18, 60, f.hp / f.maxHp, color);
 }
+
 
 
 function drawMob(ctx: CanvasRenderingContext2D, m: Mob, time: number) {
@@ -583,60 +663,132 @@ function drawMob(ctx: CanvasRenderingContext2D, m: Mob, time: number) {
   ctx.fill();
   ctx.restore();
 
-  ctx.translate(0, bob);
-  // corrupted aura
-  const ag = ctx.createRadialGradient(0, 0, m.radius * 0.4, 0, 0, m.radius * 2.1);
-  ag.addColorStop(0, `${accent}33`);
-  ag.addColorStop(1, `${accent}00`);
-  ctx.fillStyle = ag;
-  ctx.beginPath();
-  ctx.arc(0, 0, m.radius * 2.1, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.translate(0, guardian ? bob : bob * 0.35);
 
-  ctx.save();
-  ctx.rotate(guardian ? time * 0.4 : time * (hostile ? 1.3 : 0.5));
-  ctx.shadowColor = accent;
-  ctx.shadowBlur = guardian ? 26 : hostile ? 18 : 10;
-  ctx.beginPath();
   if (guardian) {
+    // corrupted aura (guardian keeps its imposing presence)
+    const ag = ctx.createRadialGradient(0, 0, m.radius * 0.4, 0, 0, m.radius * 2.1);
+    ag.addColorStop(0, `${accent}33`);
+    ag.addColorStop(1, `${accent}00`);
+    ctx.fillStyle = ag;
+    ctx.beginPath();
+    ctx.arc(0, 0, m.radius * 2.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.save();
+    ctx.rotate(time * 0.4);
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 26;
+    ctx.beginPath();
     ctx.moveTo(0, -m.radius);
     ctx.lineTo(m.radius, 0);
     ctx.lineTo(0, m.radius);
     ctx.lineTo(-m.radius, 0);
     ctx.closePath();
-  } else {
-    // spiky hexagon — deliberately NOT a smooth circle so it never reads as a player
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 - Math.PI / 2;
-      const r = i % 2 === 0 ? m.radius : m.radius * 0.72;
-      const fn = i === 0 ? "moveTo" : "lineTo";
-      ctx[fn](Math.cos(a) * r, Math.sin(a) * r);
-    }
-    ctx.closePath();
-  }
-  const body = ctx.createRadialGradient(0, 0, m.radius * 0.15, 0, 0, m.radius);
-  if (m.hitFlash > 0) {
-    body.addColorStop(0, "#ffffff");
-    body.addColorStop(1, "#ffffff");
-  } else {
-    body.addColorStop(0, guardian ? "#fde68a" : hostile ? "#fde047" : "#65a30d");
-    body.addColorStop(1, guardian ? "#78350f" : hostile ? "#713f12" : "#1a2e05");
-  }
-  ctx.fillStyle = body;
-  ctx.fill();
-  ctx.lineWidth = 2;
-  ctx.strokeStyle = accent;
-  ctx.stroke();
-  ctx.restore();
+    const gbody = ctx.createRadialGradient(0, 0, m.radius * 0.15, 0, 0, m.radius);
+    gbody.addColorStop(0, m.hitFlash > 0 ? "#ffffff" : "#fde68a");
+    gbody.addColorStop(1, m.hitFlash > 0 ? "#ffffff" : "#78350f");
+    ctx.fillStyle = gbody;
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = accent;
+    ctx.stroke();
+    ctx.restore();
 
-  // glowing inner core
-  ctx.beginPath();
-  ctx.arc(0, 0, m.radius * (0.28 + 0.06 * Math.sin(time * 6)), 0, Math.PI * 2);
-  ctx.fillStyle = m.hitFlash > 0 ? "#ffffff" : accent;
-  ctx.shadowColor = accent;
-  ctx.shadowBlur = 14;
-  ctx.fill();
-  ctx.restore();
+    ctx.beginPath();
+    ctx.arc(0, 0, m.radius * (0.28 + 0.06 * Math.sin(time * 6)), 0, Math.PI * 2);
+    ctx.fillStyle = m.hitFlash > 0 ? "#ffffff" : accent;
+    ctx.shadowColor = accent;
+    ctx.shadowBlur = 14;
+    ctx.fill();
+    ctx.restore();
+  } else {
+    // CRAWLER: low, primitive stone-shelled creature — never reads as a player
+    const R = m.radius;
+    const flash = m.hitFlash > 0;
+    const skitter = Math.sin(time * (hostile ? 13 : 5) + m.pos.x * 0.05);
+    const heading = Math.atan2(m.pos.y - m.home.y, m.pos.x - m.home.x);
+    ctx.rotate(heading + Math.PI / 2);
+
+    // skittering legs
+    ctx.strokeStyle = flash ? "#ffffff" : "#241c17";
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = "round";
+    for (let i = 0; i < 3; i++) {
+      const ly = -R * 0.4 + i * R * 0.5;
+      const swing = skitter * (i % 2 === 0 ? 1 : -1) * R * 0.28;
+      for (const s of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(s * R * 0.4, ly);
+        ctx.lineTo(s * R * 1.05, ly + swing * 0.4);
+        ctx.lineTo(s * R * 1.25, ly + swing);
+        ctx.stroke();
+      }
+    }
+
+    // carapace — squat, chitin/stone shell
+    ctx.beginPath();
+    ctx.ellipse(0, R * 0.1, R * 0.68, R * 0.95, 0, 0, Math.PI * 2);
+    const shell = ctx.createLinearGradient(-R * 0.5, -R * 0.8, R * 0.5, R * 0.8);
+    if (flash) {
+      shell.addColorStop(0, "#ffffff");
+      shell.addColorStop(1, "#ffffff");
+    } else {
+      shell.addColorStop(0, "#4a3f34");
+      shell.addColorStop(0.55, "#2c2723");
+      shell.addColorStop(1, "#15120f");
+    }
+    ctx.fillStyle = shell;
+    ctx.fill();
+    ctx.strokeStyle = flash ? "#ffffff" : "rgba(124,95,63,0.75)";
+    ctx.lineWidth = 1.6;
+    ctx.stroke();
+
+    // shell ridges
+    ctx.strokeStyle = "rgba(10,8,7,0.75)";
+    ctx.lineWidth = 1.2;
+    for (let i = 0; i < 3; i++) {
+      const y = -R * 0.35 + i * R * 0.42;
+      ctx.beginPath();
+      ctx.moveTo(-R * 0.5, y);
+      ctx.quadraticCurveTo(0, y + R * 0.18, R * 0.5, y);
+      ctx.stroke();
+    }
+
+    // corrupted crack along the back
+    ctx.beginPath();
+    ctx.moveTo(-R * 0.12, R * 0.6);
+    ctx.lineTo(R * 0.06, R * 0.05);
+    ctx.lineTo(-R * 0.06, -R * 0.35);
+    ctx.strokeStyle = `rgba(167,139,250,${hostile ? 0.9 : 0.55})`;
+    ctx.lineWidth = 1.6;
+    ctx.shadowColor = "#a78bfa";
+    ctx.shadowBlur = 8;
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+
+    // mandible nubs + glowing eyes at the front
+    ctx.fillStyle = flash ? "#ffffff" : "#1b1613";
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.moveTo(s * R * 0.3, -R * 0.75);
+      ctx.lineTo(s * R * 0.5, -R * 1.15);
+      ctx.lineTo(s * R * 0.12, -R * 0.9);
+      ctx.closePath();
+      ctx.fill();
+    }
+    const eye = 0.7 + 0.3 * Math.sin(time * 7);
+    ctx.shadowColor = hostile ? "#f87171" : "#a78bfa";
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = hostile ? `rgba(248,113,113,${eye})` : `rgba(196,181,253,${eye})`;
+    for (const s of [-1, 1]) {
+      ctx.beginPath();
+      ctx.arc(s * R * 0.24, -R * 0.6, R * 0.13, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
 
 
   if (!guardian && m.state === "AGGRO") {
