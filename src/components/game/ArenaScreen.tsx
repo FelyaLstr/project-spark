@@ -187,7 +187,17 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
           <div className="shrink-0 rounded-lg border border-border/50 bg-card/60 px-2.5 py-1 text-center backdrop-blur-sm">
             <div className="font-mono text-lg font-black tabular-nums text-foreground">{hud ? fmt(hud.timeLeft) : "--:--"}</div>
             <div className="text-[9px] uppercase tracking-[0.2em] text-muted-foreground">
-              {hud?.core.active ? "CORE ACTIVE" : "CORE IDLE"}
+              {hud?.core.active
+                ? hud.core.contested
+                  ? "CORE CONTESTED"
+                  : `CORE ${Math.floor(
+                      (Math.max(hud.core.progressA, hud.core.progressB) / C.core.captureSeconds) * 100,
+                    )}%`
+                : hud?.core.ownedBy
+                  ? hud.core.ownedBy === "A"
+                    ? "CORE YOURS"
+                    : "CORE ENEMY"
+                  : "CORE IDLE"}
             </div>
           </div>
           <Bar
