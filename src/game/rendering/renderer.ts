@@ -371,9 +371,19 @@ function drawCore(ctx: CanvasRenderingContext2D, engine: GameEngine) {
   if (active && prog > 0.01) {
     ctx.beginPath();
     ctx.arc(p.x, p.y, r - 10, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2);
-    ctx.strokeStyle = engine.core.progressA >= engine.core.progressB ? "#38bdf8" : "#fb7185";
+    ctx.strokeStyle = engine.core.contested
+      ? "#fbbf24"
+      : engine.core.progressA >= engine.core.progressB
+        ? "#38bdf8"
+        : "#fb7185";
     ctx.lineWidth = 8;
     ctx.stroke();
+  }
+  if (active && engine.core.contested) {
+    ctx.font = "bold 18px ui-sans-serif, system-ui";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "rgba(251,191,36,0.85)";
+    ctx.fillText("CONTESTED", p.x, p.y + 6);
   }
 }
 

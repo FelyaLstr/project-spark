@@ -84,7 +84,7 @@ export class GameEngine {
 
   projectiles: Projectile[] = [];
   effects: Effect[] = [];
-  core: CoreState = { active: false, progressA: 0, progressB: 0, ownedBy: null };
+  core: CoreState = { active: false, contested: false, progressA: 0, progressB: 0, ownedBy: null };
   safeRadius: number | null = null;
   winner: Team | null = null;
   announcement: string | null = null;
@@ -122,7 +122,7 @@ export class GameEngine {
     this.projectiles = [];
     this.effects = [];
     this.timers = [];
-    this.core = { active: false, progressA: 0, progressB: 0, ownedBy: null };
+    this.core = { active: false, contested: false, progressA: 0, progressB: 0, ownedBy: null };
     this.safeRadius = null;
     this.winner = null;
     this.announcement = null;
@@ -326,7 +326,7 @@ export class GameEngine {
   }
 
   private activateCore() {
-    this.core = { active: true, progressA: 0, progressB: 0, ownedBy: null };
+    this.core = { active: true, contested: false, progressA: 0, progressB: 0, ownedBy: null };
     if (this.phase === "PLAYING") this.phase = "CORE_EVENT";
     this.announce("THE CORE IS ACTIVE");
   }
@@ -349,6 +349,7 @@ export class GameEngine {
   private cdMult(f: Fighter) {
     let m = 1 / (1 + f.upgrades.haste * C.upgrades.haste);
     if (f.ultActiveFor > 0) m *= 1 / C.abilities.r.attackSpeedMult;
+    if (f.buffs.overchargeFor > 0) m *= 1 / (1 + C.core.attackSpeedBonus);
     return m;
   }
 
@@ -362,7 +363,12 @@ export class GameEngine {
     f.dashFor = Math.max(0, f.dashFor - dt);
     f.invulnFor = Math.max(0, f.invulnFor - dt);
     f.hitFlash = Math.max(0, f.hitFlash - dt);
+    const hadOvercharge = f.buffs.overchargeFor > 0;
     f.buffs.overchargeFor = Math.max(0, f.buffs.overchargeFor - dt);
+    // buff over -> the core drops back to a neutral, unowned state
+    if (hadOvercharge && f.buffs.overchargeFor <= 0 && this.core.ownedBy === f.team) {
+      this.core.ownedBy = null;
+    }
 
     const aim = norm(cmd.aim);
     if (aim.x || aim.y) f.facing = Math.atan2(aim.y, aim.x);
@@ -754,9 +760,13 @@ export class GameEngine {
   // ---------- core ----------
   private updateCore(dt: number) {
     if (!C.features.coreObjective) return;
-    if (!this.core.active) return;
+    if (!this.core.active) {
+      this.core.contested = false;
+      return;
+    }
     const inA = this.player.alive && dist(this.player.pos, this.corePos) < C.arena.coreRadius;
     const inB = this.enemy.alive && dist(this.enemy.pos, this.corePos) < C.arena.coreRadius;
+    this.core.contested = inA && inB;
     if (inA && !inB) this.core.progressA += dt;
     else if (inB && !inA) this.core.progressB += dt;
     else if (!inA && !inB) {
@@ -767,10 +777,23 @@ export class GameEngine {
     const capture = (f: Fighter) => {
       f.buffs.overchargeFor = C.core.buffDuration;
       f.stats.coreCaptures += 1;
-      this.core = { active: false, progressA: 0, progressB: 0, ownedBy: f.team };
+      this.core = { active: false, contested: false, progressA: 0, progressB: 0, ownedBy: f.team };
       if (this.phase === "CORE_EVENT") this.phase = "PLAYING";
       this.announce(f.team === "A" ? "YOU CAPTURED THE CORE" : "ENEMY CAPTURED THE CORE");
-      this.pushEffect({ kind: "core-ring", pos: { ...this.corePos }, radius: C.arena.coreRadius, life: 0.9, color: "#38bdf8" });
+      this.pushEffect({
+        kind: "core-ring",
+        pos: { ...this.corePos },
+        radius: C.arena.coreRadius,
+        life: 0.9,
+        color: f.team === "A" ? "#38bdf8" : "#fb7185",
+      });
+      this.pushEffect({
+        kind: "text",
+        pos: { x: this.corePos.x, y: this.corePos.y - 20 },
+        text: "CORE CAPTURED",
+        life: 1.2,
+        color: f.team === "A" ? "#7dd3fc" : "#fda4af",
+      });
     };
     if (this.core.progressA >= C.core.captureSeconds) capture(this.player);
     else if (this.core.progressB >= C.core.captureSeconds) capture(this.enemy);

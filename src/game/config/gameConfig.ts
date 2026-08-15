@@ -229,8 +229,10 @@ export const GAME_CONFIG = {
   core: {
     captureSeconds: 4,
     buffDuration: 20,
-    damageBonus: 0.15,
+    damageBonus: 0.1,
     speedBonus: 0.1,
+    /** cooldown/attack-speed bonus while overcharged */
+    attackSpeedBonus: 0.1,
   },
   upgrades: {
     cost: 20,

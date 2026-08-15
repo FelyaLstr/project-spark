@@ -147,6 +147,8 @@ export type MatchPhase =
 
 export type CoreState = {
   active: boolean;
+  /** both fighters inside the zone -> capture progress is frozen */
+  contested: boolean;
   progressA: number;
   progressB: number;
   ownedBy: Team | null;
