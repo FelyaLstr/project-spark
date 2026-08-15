@@ -223,6 +223,12 @@ export function ArenaScreen({ opponentName, onFinish, onQuit }: Props) {
               ESSENCE {hud?.essence ?? 0}
             </span>
           )}
+          <span className="rounded-full border border-border/50 bg-card/60 px-2.5 py-1 text-muted-foreground">
+            CORE: YOU{" "}
+            <span className="text-primary">{hud?.player.stats.coreCaptures ?? 0}</span>{" "}
+            | ENEMY{" "}
+            <span className="text-destructive">{hud?.enemy.stats.coreCaptures ?? 0}</span>
+          </span>
           {p && p.ultActiveFor > 0 && <Chip>OVERDRIVE</Chip>}
         </div>
       </div>
