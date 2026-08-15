@@ -153,6 +153,9 @@ export function createAIController(difficulty: AIDifficulty = GAME_CONFIG.ai.dif
       let move: Vec;
       if (mode === "RETREAT") {
         move = norm({ x: -toFoe.x + perp.x * 0.4, y: -toFoe.y + perp.y * 0.4 });
+      } else if (w.coreActive && dist(self.pos, w.corePos) > C.arena.coreRadius * 0.55) {
+        // minimal core awareness: walk in to capture / contest while it is active
+        move = norm(sub(w.corePos, self.pos));
       } else if (mode === "FARM" && campMob) {
         // close in on the crawler, then hold a short poke distance
         const delta = targetRange - 190;
