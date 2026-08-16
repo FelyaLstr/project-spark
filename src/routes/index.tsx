@@ -3,6 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 import { ArenaScreen, type MatchResult } from "@/components/game/ArenaScreen";
 import { matchService } from "@/services/matchService";
 import { initTelegram } from "@/services/telegram";
+import { PlayerProfileCard } from "@/components/profile/PlayerProfileCard";
+import { PlayerProfileDialog } from "@/components/profile/PlayerProfileDialog";
+import { MOCK_PLAYERS, PLAYER_LIST, getPlayerByName, type PlayerProfile } from "@/data/players";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -46,6 +49,7 @@ function App() {
   const [result, setResult] = useState<MatchResult | null>(null);
   const [profile, setProfile] = useState<Profile>(() => loadProfile());
   const [matchKey, setMatchKey] = useState(0);
+  const [viewed, setViewed] = useState<PlayerProfile | null>(null);
 
   useEffect(() => {
     const tg = initTelegram();
@@ -88,21 +92,60 @@ function App() {
     );
   }
 
+  const selfProfile: PlayerProfile = {
+    ...MOCK_PLAYERS.self,
+    name: profile.name,
+    rating: profile.rating,
+    wins: MOCK_PLAYERS.self.wins + profile.wins,
+    losses: MOCK_PLAYERS.self.losses + profile.losses,
+    matches: MOCK_PLAYERS.self.matches + profile.wins + profile.losses,
+  };
+  const opponentProfile = getPlayerByName(opponent);
+
   return (
     <main className="relative min-h-[100dvh] overflow-hidden bg-background px-5 py-8 text-foreground">
       <div className="pointer-events-none absolute -top-32 left-1/2 size-96 -translate-x-1/2 rounded-full bg-primary/20 blur-[120px]" />
       <div className="relative mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-md flex-col">
-        {screen === "MENU" && <Menu profile={profile} onPlay={startSearch} onPractice={practice} />}
+        {screen === "MENU" && (
+          <Menu
+            profile={profile}
+            self={selfProfile}
+            onPlay={startSearch}
+            onPractice={practice}
+            onOpenProfile={setViewed}
+          />
+        )}
         {screen === "MATCHMAKING" && <Searching onCancel={() => setScreen("MENU")} />}
         {screen === "RESULTS" && result && (
-          <Results result={result} onRematch={startSearch} onMenu={() => setScreen("MENU")} />
+          <Results
+            result={result}
+            self={selfProfile}
+            opponent={opponentProfile}
+            onOpenProfile={setViewed}
+            onRematch={startSearch}
+            onMenu={() => setScreen("MENU")}
+          />
         )}
       </div>
+      <PlayerProfileDialog player={viewed} open={!!viewed} onOpenChange={(o) => !o && setViewed(null)} />
     </main>
   );
 }
 
-function Menu({ profile, onPlay, onPractice }: { profile: Profile; onPlay: () => void; onPractice: () => void }) {
+function Menu({
+  profile,
+  self,
+  onPlay,
+  onPractice,
+  onOpenProfile,
+}: {
+  profile: Profile;
+  self: PlayerProfile;
+  onPlay: () => void;
+  onPractice: () => void;
+  onOpenProfile: (p: PlayerProfile) => void;
+}) {
+  const rivals = PLAYER_LIST.filter((p) => p.id !== "self");
   return (
     <>
       <header className="text-center">
@@ -112,22 +155,24 @@ function Menu({ profile, onPlay, onPractice }: { profile: Profile; onPlay: () =>
         <p className="mt-1 text-xs uppercase tracking-[0.35em] text-muted-foreground">Arena · 1v1</p>
       </header>
 
-      <section className="mt-8 rounded-2xl border border-border/60 bg-card/60 p-4 backdrop-blur">
-        <div className="flex items-center gap-4">
-          <div className="grid size-16 place-items-center rounded-xl border border-primary/40 bg-primary/15 text-2xl font-black text-primary">
-            {profile.name.slice(0, 1).toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <div className="truncate text-lg font-bold">{profile.name}</div>
-            <div className="text-xs uppercase tracking-widest text-muted-foreground">Rating {profile.rating}</div>
-          </div>
-        </div>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+      <section className="mt-8">
+        <PlayerProfileCard player={self} onClick={onOpenProfile} />
+        <div className="mt-2 grid grid-cols-3 gap-2 text-center">
           <Stat label="Wins" value={profile.wins} />
           <Stat label="Losses" value={profile.losses} />
           <Stat label="Streak" value={profile.streak} />
         </div>
       </section>
+
+      <section className="mt-6">
+        <div className="mb-2 text-[10px] uppercase tracking-[0.35em] text-muted-foreground">Rivals</div>
+        <div className="space-y-2">
+          {rivals.map((p) => (
+            <PlayerProfileCard key={p.id} player={p} onClick={onOpenProfile} compact />
+          ))}
+        </div>
+      </section>
+
 
       <button
         onClick={onPlay}
@@ -174,10 +219,16 @@ function Searching({ onCancel }: { onCancel: () => void }) {
 
 function Results({
   result,
+  self,
+  opponent,
+  onOpenProfile,
   onRematch,
   onMenu,
 }: {
   result: MatchResult;
+  self: PlayerProfile;
+  opponent: PlayerProfile;
+  onOpenProfile: (p: PlayerProfile) => void;
   onRematch: () => void;
   onMenu: () => void;
 }) {
@@ -204,7 +255,12 @@ function Results({
         />
       </div>
 
-      <div className="mt-8 space-y-2 rounded-2xl border border-border/60 bg-card/60 p-4">
+      <div className="mt-6 grid gap-2 sm:grid-cols-2">
+        <PlayerProfileCard player={self} onClick={onOpenProfile} compact />
+        <PlayerProfileCard player={opponent} onClick={onOpenProfile} compact />
+      </div>
+
+      <div className="mt-4 space-y-2 rounded-2xl border border-border/60 bg-card/60 p-4">
         <Row label="Damage dealt" value={result.damageDealt} />
         <Row label="Damage received" value={result.damageTaken} />
         <Row label="Abilities hit" value={result.abilitiesHit} />
