@@ -37,7 +37,7 @@ export const RANK_ACCENT: Record<RankTier, string> = {
 
 export const winRate = (p: PlayerProfile) => (p.matches ? (p.wins / p.matches) * 100 : 0);
 
-export const MOCK_PLAYERS: Record<string, PlayerProfile> = {
+export const MOCK_PLAYERS = {
   self: {
     id: "self",
     name: "Vanguard",
@@ -114,5 +114,5 @@ export const MOCK_PLAYERS: Record<string, PlayerProfile> = {
 
 export const getPlayerByName = (name: string): PlayerProfile => {
   const found = Object.values(MOCK_PLAYERS).find((p) => p.name.toLowerCase() === name.toLowerCase());
-  return found ?? { ...MOCK_PLAYERS.nyx, id: `guest-${name}`, name };
+  return found ?? { ...MOCK_PLAYERS["nyx"], id: `guest-${name}`, name };
 };
