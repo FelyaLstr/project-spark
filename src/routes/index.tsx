@@ -3,6 +3,9 @@ import { useCallback, useEffect, useState } from "react";
 import { ArenaScreen, type MatchResult } from "@/components/game/ArenaScreen";
 import { matchService } from "@/services/matchService";
 import { initTelegram } from "@/services/telegram";
+import { PlayerProfileCard } from "@/components/profile/PlayerProfileCard";
+import { PlayerProfileDialog } from "@/components/profile/PlayerProfileDialog";
+import { MOCK_PLAYERS, PLAYER_LIST, getPlayerByName, type PlayerProfile } from "@/data/players";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -46,6 +49,7 @@ function App() {
   const [result, setResult] = useState<MatchResult | null>(null);
   const [profile, setProfile] = useState<Profile>(() => loadProfile());
   const [matchKey, setMatchKey] = useState(0);
+  const [viewed, setViewed] = useState<PlayerProfile | null>(null);
 
   useEffect(() => {
     const tg = initTelegram();
@@ -215,10 +219,16 @@ function Searching({ onCancel }: { onCancel: () => void }) {
 
 function Results({
   result,
+  self,
+  opponent,
+  onOpenProfile,
   onRematch,
   onMenu,
 }: {
   result: MatchResult;
+  self: PlayerProfile;
+  opponent: PlayerProfile;
+  onOpenProfile: (p: PlayerProfile) => void;
   onRematch: () => void;
   onMenu: () => void;
 }) {
@@ -245,7 +255,12 @@ function Results({
         />
       </div>
 
-      <div className="mt-8 space-y-2 rounded-2xl border border-border/60 bg-card/60 p-4">
+      <div className="mt-6 grid gap-2 sm:grid-cols-2">
+        <PlayerProfileCard player={self} onClick={onOpenProfile} compact />
+        <PlayerProfileCard player={opponent} onClick={onOpenProfile} compact />
+      </div>
+
+      <div className="mt-4 space-y-2 rounded-2xl border border-border/60 bg-card/60 p-4">
         <Row label="Damage dealt" value={result.damageDealt} />
         <Row label="Damage received" value={result.damageTaken} />
         <Row label="Abilities hit" value={result.abilitiesHit} />
