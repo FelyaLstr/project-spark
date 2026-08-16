@@ -110,9 +110,12 @@ export const MOCK_PLAYERS = {
       { id: "shadowstalker", name: "Shadowstalker", role: "ASSASSIN", games: 511, winRate: 62.0 },
     ],
   },
-};
+} satisfies Record<string, PlayerProfile>;
+
+export const PLAYER_LIST: PlayerProfile[] = Object.values(MOCK_PLAYERS);
 
 export const getPlayerByName = (name: string): PlayerProfile => {
-  const found = Object.values(MOCK_PLAYERS).find((p) => p.name.toLowerCase() === name.toLowerCase());
-  return found ?? { ...MOCK_PLAYERS["nyx"], id: `guest-${name}`, name };
+  const found = PLAYER_LIST.find((p) => p.name.toLowerCase() === name.toLowerCase());
+  return found ?? { ...MOCK_PLAYERS.nyx, id: `guest-${name}`, name };
 };
+
